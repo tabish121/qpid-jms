@@ -17,10 +17,12 @@
 package org.apache.qpid.jms;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import javax.jms.ConnectionConsumer;
+import javax.jms.IllegalStateException;
 import javax.jms.JMSException;
 import javax.jms.ServerSession;
 import javax.jms.ServerSessionPool;
@@ -45,6 +47,7 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
 
     private final Lock dispatchLock = new ReentrantLock();
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
 
     public JmsConnectionConsumer(JmsConnection connection, JmsConsumerInfo consumerInfo) throws JMSException {
         this.connection = connection;
@@ -89,9 +92,16 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
 
     @Override
     public void close() throws JMSException {
+        if (!closed.get()) {
+            shutdown(null);
+        }
+    }
+
+    protected void shutdown(Throwable cause) throws JMSException {
         if (closed.compareAndSet(false, true)) {
             dispatchLock.lock();
             try {
+                failureCause.set(cause);
                 consumerInfo.setState(ResourceState.CLOSED);
                 connection.removeConnectionConsumer(consumerInfo);
                 connection.destroyResource(consumerInfo);
@@ -103,6 +113,7 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
 
     @Override
     public ServerSessionPool getServerSessionPool() throws JMSException {
+        checkClosed();
         return sessionPool;
     }
 
@@ -114,9 +125,31 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
         return consumerInfo;
     }
 
+    void setFailureCause(Throwable failureCause) {
+        this.failureCause.set(failureCause);
+    }
+
+    Throwable getFailureCause() {
+        return failureCause.get();
+    }
+
     @Override
     public String toString() {
         return "JmsConnectionConsumer { id=" + consumerInfo.getId() + " }";
     }
 
+    protected void checkClosed() throws IllegalStateException {
+        if (closed.get()) {
+            IllegalStateException jmsEx = null;
+
+            if (getFailureCause() == null) {
+                jmsEx = new IllegalStateException("The ConnectionConsumer is closed");
+            } else {
+                jmsEx = new IllegalStateException("The ConnectionConsumer was closed due to an unrecoverable error.");
+                jmsEx.initCause(getFailureCause());
+            }
+
+            throw jmsEx;
+        }
+    }
 }

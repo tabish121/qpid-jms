@@ -417,12 +417,18 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
 
     @Override
     public ConnectionConsumer createConnectionConsumer(Topic topic, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        return createConnectionConsumer(topic, messageSelector, sessionPool, maxMessages);
+        checkClosedOrFailed();
+        createJmsConnection();
+
+        return createConnectionConsumer(topic, messageSelector, sessionPool, maxMessages, null, false, false);
     }
 
     @Override
     public ConnectionConsumer createConnectionConsumer(Queue queue, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
-        return createConnectionConsumer(queue, messageSelector, sessionPool, maxMessages);
+        checkClosedOrFailed();
+        createJmsConnection();
+
+        return createConnectionConsumer(queue, messageSelector, sessionPool, maxMessages, null, false, false);
     }
 
     @Override
@@ -1375,12 +1381,20 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
                     }
                 }
             } else if (resource instanceof JmsConsumerInfo) {
-                JmsSessionId parentId = ((JmsConsumerInfo) resource).getParentId();
-                JmsSession session = sessions.get(parentId);
-                if (session != null) {
-                    JmsMessageConsumer consumer = session.lookup((JmsConsumerId) resource.getId());
+                JmsConsumerInfo consumerInfo = (JmsConsumerInfo) resource;
+                if (consumerInfo.isConnectionConsumer()) {
+                    JmsConnectionConsumer consumer = connectionConsumers.get(consumerInfo.getId());
                     if (consumer != null) {
                         consumer.setFailureCause(cause);
+                    }
+                } else {
+                    JmsSessionId parentId = consumerInfo.getParentId();
+                    JmsSession session = sessions.get(parentId);
+                    if (session != null) {
+                        JmsMessageConsumer consumer = session.lookup((JmsConsumerId) resource.getId());
+                        if (consumer != null) {
+                            consumer.setFailureCause(cause);
+                        }
                     }
                 }
             }
@@ -1409,13 +1423,29 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
                             }
                         }
                     } else if (resource instanceof JmsConsumerInfo) {
-                        JmsSessionId parentId = ((JmsConsumerInfo) resource).getParentId();
-                        JmsSession session = sessions.get(parentId);
-                        if (session != null) {
-                            JmsMessageConsumer consumer = session.consumerClosed((JmsConsumerInfo) resource, cause);
+                        JmsConsumerInfo consumerInfo = (JmsConsumerInfo) resource;
+                        if (consumerInfo.isConnectionConsumer()) {
+                            JmsConnectionConsumer consumer = connectionConsumers.get(consumerInfo.getId());
                             if (consumer != null) {
-                                for (JmsConnectionListener listener : connectionListeners) {
-                                    listener.onConsumerClosed(consumer, cause);
+                                try {
+                                    if (consumer != null) {
+                                        consumer.shutdown(cause);
+                                    }
+                                } catch (Throwable error) {
+                                    LOG.trace("Ignoring exception thrown during cleanup of closed connection consumer", error);
+                                }
+
+                                onAsyncException(new JMSException("Connection Consumer remotely closed").initCause(cause));
+                            }
+                        } else {
+                            JmsSessionId parentId = consumerInfo.getParentId();
+                            JmsSession session = sessions.get(parentId);
+                            if (session != null) {
+                                JmsMessageConsumer consumer = session.consumerClosed((JmsConsumerInfo) resource, cause);
+                                if (consumer != null) {
+                                    for (JmsConnectionListener listener : connectionListeners) {
+                                        listener.onConsumerClosed(consumer, cause);
+                                    }
                                 }
                             }
                         }
