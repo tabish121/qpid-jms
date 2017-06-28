@@ -110,7 +110,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
             receiverLinkName = subTracker.reserveNextSubscriptionLinkName(subscriptionName, resourceInfo);
         }
 
-        if(receiverLinkName == null) {
+        if (receiverLinkName == null) {
             receiverLinkName = "qpid-jms:receiver:" + resourceInfo.getId() + ":" + address;
         }
 
@@ -124,7 +124,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
         }
         receiver.setReceiverSettleMode(ReceiverSettleMode.FIRST);
 
-        if(validateSharedSubsLinkCapability) {
+        if (validateSharedSubsLinkCapability) {
             receiver.setDesiredCapabilities(new Symbol[] { AmqpSupport.SHARED_SUBS });
         }
 
@@ -133,7 +133,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
 
     @Override
     protected void afterOpened() {
-        if(validateSharedSubsLinkCapability) {
+        if (validateSharedSubsLinkCapability) {
             Symbol[] remoteOfferedCapabilities = endpoint.getRemoteOfferedCapabilities();
 
             boolean supported = false;
@@ -144,7 +144,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
                 }
             }
 
-            if(!supported) {
+            if (!supported) {
                 sharedSubsNotSupported = true;
 
                 if(resourceInfo.isDurable()) {
@@ -226,7 +226,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
             capabilities.add(typeCapability);
         }
 
-        if(resourceInfo.isShared()) {
+        if (resourceInfo.isShared()) {
             capabilities.add(AmqpSupport.SHARED);
 
             if(!resourceInfo.isExplicitClientID()) {
@@ -234,12 +234,12 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
             }
         }
 
-        if(!capabilities.isEmpty()) {
+        if (!capabilities.isEmpty()) {
             Symbol[] capArray = capabilities.toArray(new Symbol[capabilities.size()]);
             source.setCapabilities(capArray);
         }
 
-        //Outcomes
+        // Outcomes
         source.setOutcomes(outcomes);
         source.setDefaultOutcome(MODIFIED_FAILED);
 

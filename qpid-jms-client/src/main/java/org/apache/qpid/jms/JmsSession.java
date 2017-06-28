@@ -87,6 +87,8 @@ import org.apache.qpid.jms.provider.ProviderConstants.ACK_TYPE;
 import org.apache.qpid.jms.provider.ProviderFuture;
 import org.apache.qpid.jms.selector.SelectorParser;
 import org.apache.qpid.jms.selector.filter.FilterException;
+import org.apache.qpid.jms.util.FifoMessageQueue;
+import org.apache.qpid.jms.util.MessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,6 +104,7 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
     private final Map<JmsProducerId, JmsMessageProducer> producers = new ConcurrentHashMap<JmsProducerId, JmsMessageProducer>();
     private final Map<JmsConsumerId, JmsMessageConsumer> consumers = new ConcurrentHashMap<JmsConsumerId, JmsMessageConsumer>();
     private MessageListener messageListener;
+    private final MessageQueue sessionQueue = new FifoMessageQueue();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicBoolean started = new AtomicBoolean();
     private final JmsSessionInfo sessionInfo;
@@ -171,7 +174,10 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
 
     @Override
     public void setMessageListener(MessageListener listener) throws JMSException {
-        checkClosed();
+        if (listener != null) {
+            checkClosed();
+        }
+
         this.messageListener = listener;
     }
 
@@ -228,17 +234,6 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
         for (JmsMessageConsumer c : consumers.values()) {
             c.resumeAfterRollback();
         }
-    }
-
-    @Override
-    public void run() {
-        try {
-            checkClosed();
-        } catch (IllegalStateException e) {
-            throw new RuntimeException(e);
-        }
-
-        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -692,6 +687,56 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
     public TemporaryTopic createTemporaryTopic() throws JMSException {
         checkClosed();
         return connection.createTemporaryTopic();
+    }
+
+    //----- Session dispatch support -----------------------------------------//
+
+    @Override
+    public void run() {
+        JmsInboundMessageDispatch envelope = null;
+        while ((envelope = sessionQueue.dequeueNoWait()) != null) {
+            try {
+                JmsMessage copy = null;
+
+                if (envelope.getMessage().isExpired()) {
+                    LOG.trace("{} filtered expired message: {}", envelope.getConsumerId(), envelope);
+                    acknowledge(envelope, ACK_TYPE.MODIFIED_FAILED_UNDELIVERABLE);
+// TODO - Whose redelivery policy and how do we find the destination.
+//                } else if (redeliveryExceeded(envelope)) {
+//                    LOG.trace("{} filtered message with excessive redelivery count: {}", getConsumerId(), envelope);
+//                    applyRedeliveryPolicyOutcome(envelope);
+                } else {
+                    boolean deliveryFailed = false;
+                    boolean autoAckOrDupsOk = acknowledgementMode == Session.AUTO_ACKNOWLEDGE ||
+                                              acknowledgementMode == Session.DUPS_OK_ACKNOWLEDGE;
+                    if (autoAckOrDupsOk) {
+                        acknowledge(envelope, ACK_TYPE.DELIVERED);
+                        copy = envelope.getMessage().copy();
+                    } else {
+                        // TODO - There shouldn't be other ACK modes in use here ?
+                        acknowledge(envelope, ACK_TYPE.DELIVERED);
+                        copy = envelope.getMessage().copy();
+                    }
+                    clearSessionRecovered();
+
+                    try {
+                        messageListener.onMessage(copy);
+                    } catch (RuntimeException rte) {
+                        deliveryFailed = true;
+                    }
+
+                    if (autoAckOrDupsOk && !isSessionRecovered()) {
+                        if (!deliveryFailed) {
+                            acknowledge(envelope, ACK_TYPE.ACCEPTED);
+                        } else {
+                            acknowledge(envelope, ACK_TYPE.RELEASED);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                getConnection().onException(e);
+            }
+        }
     }
 
     //----- Session Implementation methods -----------------------------------//
@@ -1276,6 +1321,10 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
                 consumer.onInboundMessage(envelope);
             }
         }
+    }
+
+    void enqueueInSession(JmsInboundMessageDispatch envelope) {
+        sessionQueue.enqueue(envelope);
     }
 
     //----- Asynchronous Send Helpers ----------------------------------------//
