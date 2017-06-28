@@ -66,12 +66,9 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
 
     @Override
     public void onInboundMessage(JmsInboundMessageDispatch envelope) {
+        envelope.setConsumerInfo(consumerInfo);
+
         dispatchLock.lock();
-
-        // TODO - If we store a reference either to the consumer itself or the
-        //        consumer info in the envelope here the session could more easily
-        //        determine redelivery policy etc.
-
         try {
             ServerSession serverSession = getServerSessionPool().getServerSession();
             Session session = serverSession.getSession();

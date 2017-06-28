@@ -16,6 +16,8 @@
  */
 package org.apache.qpid.jms;
 
+import static org.apache.qpid.jms.message.JmsMessageSupport.lookupAckTypeForDisposition;
+
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -693,6 +695,12 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
 
     @Override
     public void run() {
+        try {
+            checkClosed();
+        } catch (IllegalStateException ex) {
+            throw new RuntimeException(ex);
+        }
+
         JmsInboundMessageDispatch envelope = null;
         while ((envelope = sessionQueue.dequeueNoWait()) != null) {
             try {
@@ -701,10 +709,10 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
                 if (envelope.getMessage().isExpired()) {
                     LOG.trace("{} filtered expired message: {}", envelope.getConsumerId(), envelope);
                     acknowledge(envelope, ACK_TYPE.MODIFIED_FAILED_UNDELIVERABLE);
-// TODO - Whose redelivery policy and how do we find the destination.
-//                } else if (redeliveryExceeded(envelope)) {
-//                    LOG.trace("{} filtered message with excessive redelivery count: {}", getConsumerId(), envelope);
-//                    applyRedeliveryPolicyOutcome(envelope);
+                } else if (redeliveryExceeded(envelope)) {
+                    LOG.trace("{} filtered message with excessive redelivery count: {}", envelope.getConsumerId(), envelope);
+                    JmsRedeliveryPolicy redeliveryPolicy = envelope.getConsumerInfo().getRedeliveryPolicy();
+                    acknowledge(envelope, lookupAckTypeForDisposition(redeliveryPolicy.getOutcome(envelope.getConsumerInfo().getDestination())));
                 } else {
                     boolean deliveryFailed = false;
                     boolean autoAckOrDupsOk = acknowledgementMode == Session.AUTO_ACKNOWLEDGE ||
@@ -1236,6 +1244,17 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
 
     void clearSessionRecovered() {
         sessionRecovered = false;
+    }
+
+    boolean redeliveryExceeded(JmsInboundMessageDispatch envelope) {
+        LOG.trace("checking envelope with {} redeliveries", envelope.getRedeliveryCount());
+
+        JmsConsumerInfo consumerInfo = envelope.getConsumerInfo();
+
+        JmsRedeliveryPolicy redeliveryPolicy = consumerInfo.getRedeliveryPolicy();
+        return redeliveryPolicy != null &&
+               redeliveryPolicy.getMaxRedeliveries(consumerInfo.getDestination()) >= 0 &&
+               redeliveryPolicy.getMaxRedeliveries(consumerInfo.getDestination()) < envelope.getRedeliveryCount();
     }
 
     //----- Event handlers ---------------------------------------------------//
