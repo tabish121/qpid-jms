@@ -41,17 +41,18 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
 
     private static final Logger LOG = LoggerFactory.getLogger(JmsConnectionConsumer.class);
 
-    private JmsConnection connection;
-    private JmsConsumerInfo consumerInfo;
-    private ServerSessionPool sessionPool;
+    private final JmsConnection connection;
+    private final JmsConsumerInfo consumerInfo;
+    private final ServerSessionPool sessionPool;
 
     private final Lock dispatchLock = new ReentrantLock();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
 
-    public JmsConnectionConsumer(JmsConnection connection, JmsConsumerInfo consumerInfo) throws JMSException {
+    public JmsConnectionConsumer(JmsConnection connection, JmsConsumerInfo consumerInfo, ServerSessionPool sessionPool) throws JMSException {
         this.connection = connection;
         this.consumerInfo = consumerInfo;
+        this.sessionPool = sessionPool;
 
         connection.addConnectionConsumer(consumerInfo, this);
         try {

@@ -1049,6 +1049,8 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
             for (JmsMessageConsumer consumer : consumers.values()) {
                 consumer.start();
             }
+
+            sessionQueue.start();
         }
     }
 
@@ -1058,6 +1060,8 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
         for (JmsMessageConsumer consumer : consumers.values()) {
             consumer.stop();
         }
+
+        sessionQueue.stop();
 
         synchronized (sessionInfo) {
             if (deliveryExecutor != null) {

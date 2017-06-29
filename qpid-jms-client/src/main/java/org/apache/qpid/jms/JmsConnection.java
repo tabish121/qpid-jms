@@ -461,7 +461,7 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
         consumerInfo.setMaxMessages(maxMessages);
         consumerInfo.setConnectionConsumer(true);
 
-        JmsConnectionConsumer consumer = new JmsConnectionConsumer(this, consumerInfo);
+        JmsConnectionConsumer consumer = new JmsConnectionConsumer(this, consumerInfo, sessionPool);
 
         try {
             return consumer.init();
@@ -1152,6 +1152,11 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
         JmsMessageDispatcher dispatcher = sessions.get(envelope.getConsumerId().getParentId());
         if (dispatcher != null) {
             dispatcher.onInboundMessage(envelope);
+        } else {
+            dispatcher = connectionConsumers.get(envelope.getConsumerId());
+            if (dispatcher != null) {
+                dispatcher.onInboundMessage(envelope);
+            }
         }
 
         // Run the application callbacks on the connection executor to allow the provider to

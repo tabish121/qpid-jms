@@ -19,6 +19,8 @@ package org.apache.qpid.jms.integration;
 import static org.junit.Assert.assertTrue;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import javax.jms.Connection;
@@ -26,6 +28,8 @@ import javax.jms.ConnectionConsumer;
 import javax.jms.ExceptionListener;
 import javax.jms.IllegalStateException;
 import javax.jms.JMSException;
+import javax.jms.Message;
+import javax.jms.MessageListener;
 import javax.jms.Queue;
 import javax.jms.ServerSession;
 import javax.jms.ServerSessionPool;
@@ -37,6 +41,8 @@ import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.Wait;
 import org.apache.qpid.jms.test.testpeer.TestAmqpPeer;
 import org.apache.qpid.jms.test.testpeer.basictypes.AmqpError;
+import org.apache.qpid.jms.test.testpeer.describedtypes.sections.AmqpValueDescribedType;
+import org.apache.qpid.proton.amqp.DescribedType;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,13 +56,11 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
 
     private final IntegrationTestFixture testFixture = new IntegrationTestFixture();
 
-    @Test
+    @Test(timeout = 20000)
     public void testCreateConnectionConsumer() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             JmsServerSessionPool sessionPool = new JmsServerSessionPool();
             Connection connection = testFixture.establishConnecton(testPeer);
-
-            LOG.info("Creating new ConnectionConsumer");
 
             // No additional Begin calls as there's no Session created for a Connection Consumer
             testPeer.expectReceiverAttach();
@@ -64,6 +68,51 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
 
             Queue queue = new JmsQueue("myQueue");
             ConnectionConsumer consumer = connection.createConnectionConsumer(queue, null, sessionPool, 100);
+
+            testPeer.expectDetach(true, true, true);
+            consumer.close();
+
+            testPeer.expectClose();
+            connection.close();
+
+            testPeer.waitForAllHandlersToComplete(1000);
+        }
+    }
+
+    @Test
+    public void testConnectionConsumerDispatchesToSession() throws Exception {
+        final CountDownLatch messageArrived = new CountDownLatch(1);
+
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+            Connection connection = testFixture.establishConnecton(testPeer);
+            connection.start();
+
+            testPeer.expectBegin();
+
+            // Create a session for our ServerSessionPool to use
+            Session session = connection.createSession();
+            session.setMessageListener(new MessageListener() {
+
+                @Override
+                public void onMessage(Message message) {
+                    messageArrived.countDown();
+                }
+            });
+            JmsServerSession serverSession = new JmsServerSession(session);
+            JmsServerSessionPool sessionPool = new JmsServerSessionPool(serverSession);
+
+            // Now the Connection consumer arrives and we give it a message
+            // to be dispatched to the server session.
+            DescribedType amqpValueNullContent = new AmqpValueDescribedType(null);
+
+            testPeer.expectReceiverAttach();
+            testPeer.expectLinkFlowRespondWithTransfer(null, null, null, null, amqpValueNullContent);
+            testPeer.expectDispositionThatIsAcceptedAndSettled();
+
+            Queue queue = new JmsQueue("myQueue");
+            ConnectionConsumer consumer = connection.createConnectionConsumer(queue, null, sessionPool, 100);
+
+            assertTrue("Message didn't arrive in time", messageArrived.await(50, TimeUnit.SECONDS));
 
             testPeer.expectDetach(true, true, true);
             consumer.close();
@@ -107,6 +156,7 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
                     try {
                         consumer.getServerSessionPool();
                     } catch (IllegalStateException jmsise) {
+                        LOG.debug("Error reported from consumer.getServerSessionPool()", jmsise);
                         if (jmsise.getCause() != null) {
                             String message = jmsise.getCause().getMessage();
                             return message.contains(AmqpError.RESOURCE_DELETED.toString()) &&
@@ -132,7 +182,6 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
 
     //----- Internal ServerSessionPool ---------------------------------------//
 
-    @SuppressWarnings("unused")
     private class JmsServerSessionPool implements ServerSessionPool {
 
         private JmsServerSession serverSession;
@@ -151,12 +200,13 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @SuppressWarnings("unused")
     private class JmsServerSession implements ServerSession {
 
-        private Session session;
+        private final Session session;
+        private final ExecutorService runner = Executors.newSingleThreadExecutor();
 
         public JmsServerSession() {
+            this.session = null;
         }
 
         public JmsServerSession(Session session) {
@@ -170,7 +220,9 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
 
         @Override
         public void start() throws JMSException {
-            session.run();
+            runner.execute(() -> {
+                session.run();
+            });
         }
     }
 }
