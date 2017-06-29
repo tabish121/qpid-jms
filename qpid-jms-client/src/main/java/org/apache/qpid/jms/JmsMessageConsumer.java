@@ -144,7 +144,7 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
     }
 
     /**
-     * Called to initiate shutdown of Producer resources and request that the remote
+     * Called to initiate shutdown of consumer resources and request that the remote
      * peer remove the registered producer.
      *
      * @throws JMSException if an error occurs during the consumer close operation.
@@ -155,7 +155,7 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
     }
 
     /**
-     * Called to release all producer resources without requiring a destroy request
+     * Called to release all the consumer resources without requiring a destroy request
      * to be sent to the remote peer.  This is most commonly needed when the parent
      * Session is closing.
      *

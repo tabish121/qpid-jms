@@ -101,8 +101,19 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     @Override
     public void close() throws JMSException {
         if (!closed.get()) {
-            shutdown(null);
+            doClose();
         }
+    }
+
+    /**
+     * Called to initiate shutdown of consumer resources and request that the remote
+     * peer remove the registered producer.
+     *
+     * @throws JMSException if an error occurs during the consumer close operation.
+     */
+    protected void doClose() throws JMSException {
+        shutdown();
+        this.connection.destroyResource(consumerInfo);
     }
 
     protected void shutdown() throws JMSException {
@@ -116,7 +127,6 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
                 failureCause.set(cause);
                 consumerInfo.setState(ResourceState.CLOSED);
                 connection.removeConnectionConsumer(consumerInfo);
-                connection.destroyResource(consumerInfo);
                 stop(true);
             } finally {
                 dispatchLock.unlock();
