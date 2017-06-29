@@ -82,6 +82,7 @@ import org.apache.qpid.jms.provider.ProviderFuture;
 import org.apache.qpid.jms.provider.ProviderListener;
 import org.apache.qpid.jms.provider.ProviderSynchronization;
 import org.apache.qpid.jms.util.FifoMessageQueue;
+import org.apache.qpid.jms.util.MessageQueue;
 import org.apache.qpid.jms.util.ThreadPoolUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -209,6 +210,10 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
                     session.shutdown();
                 }
 
+                for (JmsConnectionConsumer connectionConsumer : connectionConsumers.values()) {
+                    connectionConsumer.shutdown();
+                }
+
                 if (isConnected() && !failed.get()) {
                     ProviderFuture request = new ProviderFuture();
                     requests.put(request, request);
@@ -270,12 +275,14 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
      * Called to free all Connection resources.
      */
     protected void shutdown(Exception cause) throws JMSException {
-        // NOTE - Once ConnectionConsumer is added we must shutdown those as well.
-
         connectionInfo.setState(ResourceState.CLOSED);
 
         for (JmsSession session : sessions.values()) {
             session.shutdown(cause);
+        }
+
+        for (JmsConnectionConsumer connectionConsumer : connectionConsumers.values()) {
+            connectionConsumer.shutdown();
         }
 
         if (isConnected() && !failed.get() && !closing.get()) {
@@ -349,8 +356,12 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
         createJmsConnection();
         if (started.compareAndSet(false, true)) {
             try {
-                for (JmsSession s : sessions.values()) {
-                    s.start();
+                for (JmsSession session : sessions.values()) {
+                    session.start();
+                }
+
+                for (JmsConnectionConsumer connectionConsumer : connectionConsumers.values()) {
+                    connectionConsumer.start();
                 }
             } catch (Exception e) {
                 throw JmsExceptionSupport.create(e);
@@ -383,9 +394,15 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
         }
 
         if (started.compareAndSet(true, false)) {
-            synchronized(sessions) {
-                for (JmsSession s : sessions.values()) {
-                    s.stop();
+            synchronized (sessions) {
+                for (JmsSession session : sessions.values()) {
+                    session.stop();
+                }
+            }
+
+            synchronized (connectionConsumers) {
+                for (JmsConnectionConsumer connectionConsumer : connectionConsumers.values()) {
+                    connectionConsumer.stop();
                 }
             }
         }
@@ -442,8 +459,10 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
     private ConnectionConsumer createConnectionConsumer(Destination destination, String messageSelector, ServerSessionPool sessionPool, int maxMessages, String subscriptionName, boolean durable, boolean shared) throws JMSException {
         JmsDestination jmsDestination = JmsMessageTransformation.transformDestination(this, destination);
 
+        MessageQueue messageQueue = new FifoMessageQueue();
+
         // TODO - The message queue on this consumer is never used, that could cause issues with prefetch
-        JmsConsumerInfo consumerInfo = new JmsConsumerInfo(getNextConnectionConsumerId(), new FifoMessageQueue());
+        JmsConsumerInfo consumerInfo = new JmsConsumerInfo(getNextConnectionConsumerId(), messageQueue);
         consumerInfo.setExplicitClientID(isExplicitClientID());
         consumerInfo.setSelector(messageSelector);
         consumerInfo.setDurable(durable);
@@ -461,7 +480,7 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
         consumerInfo.setMaxMessages(maxMessages);
         consumerInfo.setConnectionConsumer(true);
 
-        JmsConnectionConsumer consumer = new JmsConnectionConsumer(this, consumerInfo, sessionPool);
+        JmsConnectionConsumer consumer = new JmsConnectionConsumer(this, consumerInfo, messageQueue, sessionPool);
 
         try {
             return consumer.init();

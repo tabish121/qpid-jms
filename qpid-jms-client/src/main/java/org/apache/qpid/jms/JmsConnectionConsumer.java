@@ -31,6 +31,7 @@ import javax.jms.Session;
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
 import org.apache.qpid.jms.meta.JmsResource.ResourceState;
+import org.apache.qpid.jms.util.MessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,15 +45,17 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     private final JmsConnection connection;
     private final JmsConsumerInfo consumerInfo;
     private final ServerSessionPool sessionPool;
+    private final MessageQueue messageQueue;
 
     private final Lock dispatchLock = new ReentrantLock();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
 
-    public JmsConnectionConsumer(JmsConnection connection, JmsConsumerInfo consumerInfo, ServerSessionPool sessionPool) throws JMSException {
+    public JmsConnectionConsumer(JmsConnection connection, JmsConsumerInfo consumerInfo, MessageQueue messageQueue, ServerSessionPool sessionPool) throws JMSException {
         this.connection = connection;
         this.consumerInfo = consumerInfo;
         this.sessionPool = sessionPool;
+        this.messageQueue = messageQueue;
 
         connection.addConnectionConsumer(consumerInfo, this);
         try {
@@ -71,6 +74,10 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     @Override
     public void onInboundMessage(JmsInboundMessageDispatch envelope) {
         envelope.setConsumerInfo(consumerInfo);
+
+        // TODO - If we instead link the consumer to a session returned from the pool
+        //        the what happens on the next incoming message, the pool is queried
+        //        again and this consumer can be linked to more than one session ?
 
         dispatchLock.lock();
         try {
@@ -98,6 +105,10 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
         }
     }
 
+    protected void shutdown() throws JMSException {
+        shutdown(null);
+    }
+
     protected void shutdown(Throwable cause) throws JMSException {
         if (closed.compareAndSet(false, true)) {
             dispatchLock.lock();
@@ -106,9 +117,35 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
                 consumerInfo.setState(ResourceState.CLOSED);
                 connection.removeConnectionConsumer(consumerInfo);
                 connection.destroyResource(consumerInfo);
+                stop(true);
             } finally {
                 dispatchLock.unlock();
             }
+        }
+    }
+
+    public void start() {
+        if (!messageQueue.isRunning()) {
+            this.messageQueue.start();
+            // TODO - seems there's no facility for this in the API drainMessageQueueToListener();
+            // Do we directly poke a ServerSession from the pool if started ?
+        }
+    }
+
+    public void stop() {
+        stop(false);
+    }
+
+    private void stop(boolean closeMessageQueue) {
+        dispatchLock.lock();
+        try {
+            if (closeMessageQueue) {
+                this.messageQueue.close();
+            } else {
+                this.messageQueue.stop();
+            }
+        } finally {
+            dispatchLock.unlock();
         }
     }
 

@@ -1336,13 +1336,10 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
         if (id == null) {
             this.connection.onException(new JMSException("No ConsumerId set for " + envelope.getMessage()));
         }
-        if (messageListener != null) {
-            messageListener.onMessage(envelope.getMessage());
-        } else {
-            JmsMessageConsumer consumer = consumers.get(id);
-            if (consumer != null) {
-                consumer.onInboundMessage(envelope);
-            }
+
+        JmsMessageConsumer consumer = consumers.get(id);
+        if (consumer != null) {
+            consumer.onInboundMessage(envelope);
         }
     }
 
