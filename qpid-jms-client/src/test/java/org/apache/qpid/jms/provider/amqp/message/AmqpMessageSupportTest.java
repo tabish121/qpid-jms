@@ -81,16 +81,16 @@ public class AmqpMessageSupportTest {
 
     @Test
     public void testIsContentTypeWithNonNullStringValueAndNonNullContentTypeNotEqual() {
-        assertFalse(AmqpMessageSupport.isContentType("test", Symbol.valueOf("fails")));
+        assertFalse(AmqpMessageSupport.isContentType("test", "fails"));
     }
 
     @Test
     public void testIsContentTypeWithNonNullStringValueAndNonNullContentTypeEqual() {
-        assertTrue(AmqpMessageSupport.isContentType("test", Symbol.valueOf("test")));
+        assertTrue(AmqpMessageSupport.isContentType("test", "test"));
     }
 
     @Test
     public void testIsContentTypeWithNullStringValueAndNonNullContentType() {
-        assertFalse(AmqpMessageSupport.isContentType(null, Symbol.valueOf("test")));
+        assertFalse(AmqpMessageSupport.isContentType(null, "test"));
     }
 }

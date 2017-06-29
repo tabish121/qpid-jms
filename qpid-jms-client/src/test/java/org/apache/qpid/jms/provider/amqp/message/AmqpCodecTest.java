@@ -231,7 +231,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         assertNotNull("Facade should not be null", facade);
         assertEquals(2, facade.getRedeliveryCount());
         assertEquals(2, facade.getAmqpHeader().getDeliveryCount());
-        assertEquals(UnsignedInteger.valueOf(2), facade.getHeader().getDeliveryCount());
+        assertEquals(UnsignedInteger.valueOf(2), facade.getAmqpHeader().getRawDeliveryCount());
     }
 
     // =============== With The Message Type Annotation =========

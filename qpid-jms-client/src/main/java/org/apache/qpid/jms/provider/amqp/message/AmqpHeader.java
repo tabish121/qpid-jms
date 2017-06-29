@@ -19,12 +19,13 @@ package org.apache.qpid.jms.provider.amqp.message;
 import org.apache.qpid.proton.amqp.UnsignedByte;
 import org.apache.qpid.proton.amqp.UnsignedInteger;
 import org.apache.qpid.proton.amqp.messaging.Header;
+import org.apache.qpid.proton.amqp.messaging.Section;
 
 /**
  * Wraps around the proton Header object and provides an ability to
  * determine if the Header can be optimized out of message encodes
  */
-public final class AmqpHeader {
+public final class AmqpHeader implements Section {
 
     private static final int DEFAULT_PRIORITY = 4;
     private static final long UINT_MAX = 0xFFFFFFFFL;
@@ -115,10 +116,18 @@ public final class AmqpHeader {
         return (modified & DELIVERY_COUNT) == DELIVERY_COUNT;
     }
 
+    public int getModifiedFlag() {
+        return modified;
+    }
+
     //----- Access the AMQP Header object ------------------------------------//
 
     public boolean isDurable() {
         return Boolean.TRUE.equals(durable);
+    }
+
+    public Boolean getRawDurable() {
+        return durable;
     }
 
     public void setDurable(Boolean value) {
@@ -129,6 +138,10 @@ public final class AmqpHeader {
             modified &= ~DURABLE;
             durable = null;
         }
+    }
+
+    public UnsignedByte getRawPriority() {
+        return priority;
     }
 
     public int getPriority() {
@@ -173,6 +186,10 @@ public final class AmqpHeader {
         return timeToLive == null ? 0l : timeToLive.longValue();
     }
 
+    public UnsignedInteger getRawTimeToLive() {
+        return timeToLive;
+    }
+
     public void setTimeToLive(UnsignedInteger value) {
         if (value == null || UnsignedInteger.ZERO.equals(value)) {
             modified &= ~TIME_TO_LIVE;
@@ -195,6 +212,10 @@ public final class AmqpHeader {
         return Boolean.TRUE.equals(firstAcquirer);
     }
 
+    public Boolean getRawFirstAcquirer() {
+        return firstAcquirer;
+    }
+
     public void setFirstAcquirer(Boolean value) {
         if (Boolean.TRUE.equals(value)) {
             modified |= FIRST_ACQUIRER;
@@ -207,6 +228,10 @@ public final class AmqpHeader {
 
     public int getDeliveryCount() {
         return deliveryCount == null ? 0 : deliveryCount.intValue();
+    }
+
+    public UnsignedInteger getRawDeliveryCount() {
+        return deliveryCount;
     }
 
     public void setDeliveryCount(UnsignedInteger value) {

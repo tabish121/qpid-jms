@@ -33,6 +33,10 @@
     <!-- Client Dependencies                 -->
     <!-- =================================== -->
     <dependency>
+      <groupId>org.apache.qpid</groupId>
+      <artifactId>qpid-jms-amqp-codec</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
     </dependency>

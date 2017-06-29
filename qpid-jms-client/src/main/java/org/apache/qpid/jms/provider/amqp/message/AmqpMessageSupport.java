@@ -144,13 +144,13 @@ public final class AmqpMessageSupport {
      *
      * @return true if content type matches
      */
-    public static boolean isContentType(String contentType, Symbol messageContentType) {
+    public static boolean isContentType(String contentType, String messageContentType) {
         if (contentType == null) {
             return messageContentType == null;
         } else if (messageContentType == null) {
             return false;
         } else {
-            return contentType.equals(messageContentType.toString());
+            return contentType.equals(messageContentType);
         }
     }
 

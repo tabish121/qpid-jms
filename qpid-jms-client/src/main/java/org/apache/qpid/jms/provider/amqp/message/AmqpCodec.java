@@ -28,24 +28,25 @@ import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.SERIA
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.isContentType;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
+import org.apache.qpid.jms.provider.amqp.codec.CodecFactory;
+import org.apache.qpid.jms.provider.amqp.codec.Decoder;
+import org.apache.qpid.jms.provider.amqp.codec.DecoderState;
+import org.apache.qpid.jms.provider.amqp.codec.Encoder;
+import org.apache.qpid.jms.provider.amqp.codec.EncoderState;
 import org.apache.qpid.jms.util.ContentTypeSupport;
 import org.apache.qpid.jms.util.InvalidContentTypeException;
 import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.Symbol;
 import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
 import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
 import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.DeliveryAnnotations;
 import org.apache.qpid.proton.amqp.messaging.Footer;
-import org.apache.qpid.proton.amqp.messaging.Header;
 import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Properties;
 import org.apache.qpid.proton.amqp.messaging.Section;
 import org.apache.qpid.proton.codec.AMQPDefinedTypes;
 import org.apache.qpid.proton.codec.DecoderImpl;
@@ -53,11 +54,22 @@ import org.apache.qpid.proton.codec.EncoderImpl;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 /**
  * AMQP Codec class used to hide the details of encode / decode
  */
 public final class AmqpCodec {
+
+    private static final Decoder amqpDecoder = CodecFactory.getDefaultDecoder();
+    private static final Encoder amqpEncoder = CodecFactory.getDefaultEncoder();
+
+    static {
+        amqpDecoder.registerDescribedTypeDecoder(new AmqpHeaderTypeDecoder());
+        amqpEncoder.registerTypeEncoder(new AmqpHeaderTypeEncoder());
+        amqpDecoder.registerDescribedTypeDecoder(new AmqpPropertiesTypeDecoder());
+        amqpEncoder.registerTypeEncoder(new AmqpPropertiesTypeEncoder());
+    }
 
     private static class EncoderDecoderPair {
         DecoderImpl decoder = new DecoderImpl();
@@ -66,6 +78,22 @@ public final class AmqpCodec {
             AMQPDefinedTypes.registerAllTypes(decoder, encoder);
         }
     }
+
+    private static final ThreadLocal<DecoderState> TLS_Decoder_State = new ThreadLocal<DecoderState>() {
+
+        @Override
+        protected DecoderState initialValue() {
+            return amqpDecoder.newDecoderState();
+        }
+    };
+
+    private static final ThreadLocal<EncoderState> TLS_Encoder_State = new ThreadLocal<EncoderState>() {
+
+        @Override
+        protected EncoderState initialValue() {
+            return amqpEncoder.newEncoderState();
+        }
+    };
 
     private static final ThreadLocal<EncoderDecoderPair> TLS_CODEC = new ThreadLocal<EncoderDecoderPair>() {
         @Override
@@ -143,44 +171,41 @@ public final class AmqpCodec {
      * @return a buffer containing the wire level representation of the input Message.
      */
     public static ByteBuf encodeMessage(AmqpJmsMessageFacade message) {
-        AmqpWritableBuffer buffer = new AmqpWritableBuffer();
+        ByteBuf buffer = Unpooled.buffer();
 
-        EncoderImpl encoder = getEncoder();
-        encoder.setByteBuffer(buffer);
+        EncoderState state = TLS_Encoder_State.get();
 
-        Header header = message.getHeader();
+        AmqpHeader header = message.getAmqpHeader();
         DeliveryAnnotations deliveryAnnotations = message.getDeliveryAnnotations();
         MessageAnnotations messageAnnotations = message.getMessageAnnotations();
-        Properties properties = message.getProperties();
+        AmqpProperties properties = message.getAmqpProperties();
         ApplicationProperties applicationProperties = message.getApplicationProperties();
         Section body = message.getBody();
         Footer footer = message.getFooter();
 
-        if (header != null) {
-            encoder.writeObject(header);
+        if (!header.isDefault()) {
+            amqpEncoder.writeObject(buffer, state, header);
         }
         if (deliveryAnnotations != null) {
-            encoder.writeObject(deliveryAnnotations);
+            amqpEncoder.writeObject(buffer, state, deliveryAnnotations);
         }
         if (messageAnnotations != null) {
-            encoder.writeObject(messageAnnotations);
+            amqpEncoder.writeObject(buffer, state, messageAnnotations);
         }
         if (properties != null) {
-            encoder.writeObject(properties);
+            amqpEncoder.writeObject(buffer, state, properties);
         }
         if (applicationProperties != null) {
-            encoder.writeObject(applicationProperties);
+            amqpEncoder.writeObject(buffer, state, applicationProperties);
         }
         if (body != null) {
-            encoder.writeObject(body);
+            amqpEncoder.writeObject(buffer, state, body);
         }
         if (footer != null) {
-            encoder.writeObject(footer);
+            amqpEncoder.writeObject(buffer, state, footer);
         }
 
-        encoder.setByteBuffer((WritableBuffer) null);
-
-        return buffer.getBuffer();
+        return buffer;
     }
 
     /**
@@ -198,27 +223,25 @@ public final class AmqpCodec {
      */
     public static AmqpJmsMessageFacade decodeMessage(AmqpConsumer consumer, ByteBuf messageBytes) throws IOException {
 
-        DecoderImpl decoder = getDecoder();
-        ByteBuffer buffer = messageBytes.nioBuffer();
-        decoder.setByteBuffer(buffer);
+        DecoderState state = TLS_Decoder_State.get();
 
-        Header header = null;
+        AmqpHeader header = null;
         DeliveryAnnotations deliveryAnnotations = null;
         MessageAnnotations messageAnnotations = null;
-        Properties properties = null;
+        AmqpProperties properties = null;
         ApplicationProperties applicationProperties = null;
         Section body = null;
         Footer footer = null;
         Section section = null;
 
-        if (buffer.hasRemaining()) {
-            section = (Section) decoder.readObject();
+        if (messageBytes.isReadable()) {
+            section = (Section) amqpDecoder.readObject(messageBytes, state);
         }
 
-        if (section instanceof Header) {
-            header = (Header) section;
-            if (buffer.hasRemaining()) {
-                section = (Section) decoder.readObject();
+        if (section instanceof AmqpHeader) {
+            header = (AmqpHeader) section;
+            if (messageBytes.isReadable()) {
+                section = (Section) amqpDecoder.readObject(messageBytes, state);
             } else {
                 section = null;
             }
@@ -227,8 +250,8 @@ public final class AmqpCodec {
         if (section instanceof DeliveryAnnotations) {
             deliveryAnnotations = (DeliveryAnnotations) section;
 
-            if (buffer.hasRemaining()) {
-                section = (Section) decoder.readObject();
+            if (messageBytes.isReadable()) {
+                section = (Section) amqpDecoder.readObject(messageBytes, state);
             } else {
                 section = null;
             }
@@ -237,18 +260,18 @@ public final class AmqpCodec {
         if (section instanceof MessageAnnotations) {
             messageAnnotations = (MessageAnnotations) section;
 
-            if (buffer.hasRemaining()) {
-                section = (Section) decoder.readObject();
+            if (messageBytes.isReadable()) {
+                section = (Section) amqpDecoder.readObject(messageBytes, state);
             } else {
                 section = null;
             }
 
         }
-        if (section instanceof Properties) {
-            properties = (Properties) section;
+        if (section instanceof AmqpProperties) {
+            properties = (AmqpProperties) section;
 
-            if (buffer.hasRemaining()) {
-                section = (Section) decoder.readObject();
+            if (messageBytes.isReadable()) {
+                section = (Section) amqpDecoder.readObject(messageBytes, state);
             } else {
                 section = null;
             }
@@ -257,8 +280,8 @@ public final class AmqpCodec {
         if (section instanceof ApplicationProperties) {
             applicationProperties = (ApplicationProperties) section;
 
-            if (buffer.hasRemaining()) {
-                section = (Section) decoder.readObject();
+            if (messageBytes.isReadable()) {
+                section = (Section) amqpDecoder.readObject(messageBytes, state);
             } else {
                 section = null;
             }
@@ -267,8 +290,8 @@ public final class AmqpCodec {
         if (section != null && !(section instanceof Footer)) {
             body = section;
 
-            if (buffer.hasRemaining()) {
-                section = (Section) decoder.readObject();
+            if (messageBytes.isReadable()) {
+                section = (Section) amqpDecoder.readObject(messageBytes, state);
             } else {
                 section = null;
             }
@@ -278,7 +301,6 @@ public final class AmqpCodec {
             footer = (Footer) section;
         }
 
-        decoder.setByteBuffer(null);
         messageBytes.resetReaderIndex();
 
         // First we try the easy way, if the annotation is there we don't have to work hard.
@@ -289,10 +311,10 @@ public final class AmqpCodec {
         }
 
         if (result != null) {
-            result.setHeader(header);
+            result.setAmqpHeader(header);
             result.setDeliveryAnnotations(deliveryAnnotations);
             result.setMessageAnnotations(messageAnnotations);
-            result.setProperties(properties);
+            result.setAmqpProperties(properties);
             result.setApplicationProperties(applicationProperties);
             result.setBody(body);
             result.setFooter(footer);
@@ -328,8 +350,8 @@ public final class AmqpCodec {
         return null;
     }
 
-    private static AmqpJmsMessageFacade createWithoutAnnotation(Section body, Properties properties) {
-        Symbol messageContentType = properties != null ? properties.getContentType() : null;
+    private static AmqpJmsMessageFacade createWithoutAnnotation(Section body, AmqpProperties properties) {
+        String messageContentType = properties != null ? properties.getContentType() : null;
 
         if (body == null) {
             if (isContentType(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE, messageContentType)) {
@@ -374,10 +396,10 @@ public final class AmqpCodec {
         return null;
     }
 
-    private static Charset getCharsetForTextualContent(Symbol messageContentType) {
+    private static Charset getCharsetForTextualContent(String messageContentType) {
         if (messageContentType != null) {
             try {
-                return ContentTypeSupport.parseContentTypeForTextualCharset(messageContentType.toString());
+                return ContentTypeSupport.parseContentTypeForTextualCharset(messageContentType);
             } catch (InvalidContentTypeException e) {
             }
         }
