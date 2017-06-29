@@ -16,6 +16,7 @@
  */
 package org.apache.qpid.jms.integration;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.concurrent.CountDownLatch;
@@ -79,7 +80,7 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test
+    @Test(timeout = 20000)
     public void testConnectionConsumerDispatchesToSession() throws Exception {
         final CountDownLatch messageArrived = new CountDownLatch(1);
 
@@ -112,9 +113,53 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
             Queue queue = new JmsQueue("myQueue");
             ConnectionConsumer consumer = connection.createConnectionConsumer(queue, null, sessionPool, 100);
 
-            assertTrue("Message didn't arrive in time", messageArrived.await(50, TimeUnit.SECONDS));
+            assertTrue("Message didn't arrive in time", messageArrived.await(10, TimeUnit.SECONDS));
 
             testPeer.expectDetach(true, true, true);
+            consumer.close();
+
+            testPeer.expectClose();
+            connection.close();
+
+            testPeer.waitForAllHandlersToComplete(1000);
+        }
+    }
+
+    @Test(timeout = 20000)
+    public void testNonStartedConnectionConsumerDoesNotDispatch() throws Exception {
+        final CountDownLatch messageArrived = new CountDownLatch(1);
+
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+            Connection connection = testFixture.establishConnecton(testPeer);
+
+            testPeer.expectBegin();
+
+            // Create a session for our ServerSessionPool to use
+            Session session = connection.createSession();
+            session.setMessageListener(new MessageListener() {
+
+                @Override
+                public void onMessage(Message message) {
+                    messageArrived.countDown();
+                }
+            });
+            JmsServerSession serverSession = new JmsServerSession(session);
+            JmsServerSessionPool sessionPool = new JmsServerSessionPool(serverSession);
+
+            // Now the Connection consumer arrives and we give it a message
+            // to be dispatched to the server session.
+            DescribedType amqpValueNullContent = new AmqpValueDescribedType(null);
+
+            testPeer.expectReceiverAttach();
+            testPeer.expectLinkFlowRespondWithTransfer(null, null, null, null, amqpValueNullContent);
+
+            Queue queue = new JmsQueue("myQueue");
+            ConnectionConsumer consumer = connection.createConnectionConsumer(queue, null, sessionPool, 100);
+
+            assertFalse("Message Arrived unexpectedly", messageArrived.await(500, TimeUnit.MILLISECONDS));
+
+            testPeer.expectDetach(true, true, true);
+            testPeer.expectDispositionThatIsReleasedAndSettled();
             consumer.close();
 
             testPeer.expectClose();
