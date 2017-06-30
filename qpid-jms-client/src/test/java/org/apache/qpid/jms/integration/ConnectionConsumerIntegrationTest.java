@@ -347,6 +347,47 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
+    @Test(timeout = 20000)
+    public void testOnExceptionFiredOnServerSessionFailure() throws Exception {
+        final CountDownLatch exceptionFired = new CountDownLatch(1);
+
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+            Connection connection = testFixture.establishConnecton(testPeer);
+            connection.setExceptionListener(new ExceptionListener() {
+
+                @Override
+                public void onException(JMSException exception) {
+                    exceptionFired.countDown();
+                }
+            });
+
+            connection.start();
+
+            JmsServerSessionPool sessionPool = new JmsServerSessionPool(new JmsFailingServerSession());
+
+            // Now the Connection consumer arrives and we give it a message
+            // to be dispatched to the server session.
+            DescribedType amqpValueNullContent = new AmqpValueDescribedType(null);
+
+            testPeer.expectReceiverAttach();
+            testPeer.expectLinkFlowRespondWithTransfer(null, null, null, null, amqpValueNullContent);
+
+            Queue queue = new JmsQueue("myQueue");
+            ConnectionConsumer consumer = connection.createConnectionConsumer(queue, null, sessionPool, 100);
+
+            assertTrue("Exception should have been fired", exceptionFired.await(5, TimeUnit.SECONDS));
+
+            testPeer.expectDetach(true, true, true);
+            testPeer.expectDispositionThatIsReleasedAndSettled();
+            consumer.close();
+
+            testPeer.expectClose();
+            connection.close();
+
+            testPeer.waitForAllHandlersToComplete(1000);
+        }
+    }
+
     //----- Internal ServerSessionPool ---------------------------------------//
 
     private class JmsFailingServerSessionPool implements ServerSessionPool {
@@ -401,6 +442,17 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
             runner.execute(() -> {
                 session.run();
             });
+        }
+    }
+
+    private class JmsFailingServerSession extends JmsServerSession {
+
+        public JmsFailingServerSession() {
+        }
+
+        @Override
+        public Session getSession() throws JMSException {
+            throw new JMSException("Something is wrong with me");
         }
     }
 }
