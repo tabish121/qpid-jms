@@ -83,6 +83,7 @@ import org.apache.qpid.jms.provider.ProviderListener;
 import org.apache.qpid.jms.provider.ProviderSynchronization;
 import org.apache.qpid.jms.util.FifoMessageQueue;
 import org.apache.qpid.jms.util.MessageQueue;
+import org.apache.qpid.jms.util.PriorityMessageQueue;
 import org.apache.qpid.jms.util.ThreadPoolUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -459,9 +460,14 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
     private ConnectionConsumer createConnectionConsumer(Destination destination, String messageSelector, ServerSessionPool sessionPool, int maxMessages, String subscriptionName, boolean durable, boolean shared) throws JMSException {
         JmsDestination jmsDestination = JmsMessageTransformation.transformDestination(this, destination);
 
-        MessageQueue messageQueue = new FifoMessageQueue();
+        final MessageQueue messageQueue;
 
-        // TODO - The message queue on this consumer is never used, that could cause issues with prefetch
+        if (isLocalMessagePriority()) {
+            messageQueue = new PriorityMessageQueue();
+        } else {
+            messageQueue = new FifoMessageQueue();
+        }
+
         JmsConsumerInfo consumerInfo = new JmsConsumerInfo(getNextConnectionConsumerId(), messageQueue);
         consumerInfo.setExplicitClientID(isExplicitClientID());
         consumerInfo.setSelector(messageSelector);
@@ -483,7 +489,11 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
         JmsConnectionConsumer consumer = new JmsConnectionConsumer(this, consumerInfo, messageQueue, sessionPool);
 
         try {
-            return consumer.init();
+            consumer.init();
+            if (started.get()) {
+                consumer.start();
+            }
+            return consumer;
         } catch (JMSException jmsEx) {
             consumer.close();
             throw jmsEx;

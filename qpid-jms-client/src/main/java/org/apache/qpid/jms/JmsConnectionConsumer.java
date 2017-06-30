@@ -16,6 +16,10 @@
  */
 package org.apache.qpid.jms;
 
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
@@ -42,6 +46,8 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
 
     private static final Logger LOG = LoggerFactory.getLogger(JmsConnectionConsumer.class);
 
+    private static final long DEFAULT_DISPATCH_RETRY_DELAY = 1000;
+
     private final JmsConnection connection;
     private final JmsConsumerInfo consumerInfo;
     private final ServerSessionPool sessionPool;
@@ -50,12 +56,27 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     private final Lock dispatchLock = new ReentrantLock();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
+    private final ScheduledThreadPoolExecutor dispatcher;
 
     public JmsConnectionConsumer(JmsConnection connection, JmsConsumerInfo consumerInfo, MessageQueue messageQueue, ServerSessionPool sessionPool) throws JMSException {
         this.connection = connection;
         this.consumerInfo = consumerInfo;
         this.sessionPool = sessionPool;
         this.messageQueue = messageQueue;
+        this.dispatcher = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
+
+            @Override
+            public Thread newThread(Runnable runner) {
+                Thread serial = new Thread(runner);
+                serial.setDaemon(true);
+                serial.setName(this.getClass().getSimpleName() + ":(" + consumerInfo.getId() + ")");
+                return serial;
+            }
+        });
+
+        // Ensure a timely shutdown for consumer close.
+        dispatcher.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        dispatcher.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
 
         connection.addConnectionConsumer(consumerInfo, this);
         try {
@@ -75,26 +96,18 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     public void onInboundMessage(JmsInboundMessageDispatch envelope) {
         envelope.setConsumerInfo(consumerInfo);
 
-        // TODO - If we instead link the consumer to a session returned from the pool
-        //        the what happens on the next incoming message, the pool is queried
-        //        again and this consumer can be linked to more than one session ?
+        if (envelope.isEnqueueFirst()) {
+            this.messageQueue.enqueueFirst(envelope);
+        } else {
+            this.messageQueue.enqueue(envelope);
+        }
 
-        dispatchLock.lock();
-        try {
-            ServerSession serverSession = getServerSessionPool().getServerSession();
-            Session session = serverSession.getSession();
-
-            if (session instanceof JmsSession) {
-                ((JmsSession) session).enqueueInSession(envelope);
-            } else {
-                LOG.warn("ServerSession provided an onknown JMS Session type to this connection consumer: {}", session);
+        if (messageQueue.isRunning()) {
+            try {
+                dispatcher.execute(() -> deliverNextPending());
+            } catch (RejectedExecutionException rje) {
+                LOG.debug("Rejected on attempt to queue message dispatch", rje);
             }
-
-            serverSession.start();
-        } catch (JMSException e) {
-            connection.onAsyncException(e);
-        } finally {
-            dispatchLock.unlock();
         }
     }
 
@@ -128,6 +141,12 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
                 consumerInfo.setState(ResourceState.CLOSED);
                 connection.removeConnectionConsumer(consumerInfo);
                 stop(true);
+                dispatcher.shutdown();
+                try {
+                    dispatcher.awaitTermination(connection.getCloseTimeout(), TimeUnit.MILLISECONDS);
+                } catch (InterruptedException e) {
+                    LOG.trace("ConnectionConsumer shutdown of dispatcher was interupted");
+                }
             } finally {
                 dispatchLock.unlock();
             }
@@ -137,8 +156,7 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     public void start() {
         if (!messageQueue.isRunning()) {
             this.messageQueue.start();
-            // TODO - seems there's no facility for this in the API drainMessageQueueToListener();
-            // Do we directly poke a ServerSession from the pool if started ?
+            this.dispatcher.execute(new BoundedMessageDeliverTask(messageQueue.size()));
         }
     }
 
@@ -198,6 +216,60 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
             }
 
             throw jmsEx;
+        }
+    }
+
+    private boolean deliverNextPending() {
+        if (messageQueue.isRunning() && !messageQueue.isEmpty()) {
+            dispatchLock.lock();
+
+            try {
+                ServerSession serverSession = getServerSessionPool().getServerSession();
+                if (serverSession == null) {
+                    // There might not be an available session so queue a task to try again
+                    // and hope that by then one is available in the pool.
+                    dispatcher.schedule(() -> deliverNextPending(), DEFAULT_DISPATCH_RETRY_DELAY, TimeUnit.MILLISECONDS);
+                }
+
+                Session session = serverSession.getSession();
+
+                JmsInboundMessageDispatch envelope = messageQueue.dequeueNoWait();
+
+                if (session instanceof JmsSession) {
+                    ((JmsSession) session).enqueueInSession(envelope);
+                } else {
+                    LOG.warn("ServerSession provided an onknown JMS Session type to this connection consumer: {}", session);
+                }
+
+                serverSession.start();
+            } catch (JMSException e) {
+                connection.onAsyncException(e);
+                stop(true);
+            } finally {
+                dispatchLock.unlock();
+            }
+        }
+
+        return !messageQueue.isEmpty();
+    }
+
+    private final class BoundedMessageDeliverTask implements Runnable {
+
+        private final int deliveryCount;
+
+        public BoundedMessageDeliverTask(int deliveryCount) {
+            this.deliveryCount = deliveryCount;
+        }
+
+        @Override
+        public void run() {
+            int current = 0;
+
+            while (messageQueue.isRunning() && current++ < deliveryCount) {
+                if (!deliverNextPending()) {
+                    return;  // Another task already drained the queue.
+                }
+            }
         }
     }
 }
