@@ -53,6 +53,7 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     private final ServerSessionPool sessionPool;
     private final MessageQueue messageQueue;
 
+    private final Lock stateLock = new ReentrantLock();
     private final Lock dispatchLock = new ReentrantLock();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
@@ -96,18 +97,23 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     public void onInboundMessage(JmsInboundMessageDispatch envelope) {
         envelope.setConsumerInfo(consumerInfo);
 
-        if (envelope.isEnqueueFirst()) {
-            this.messageQueue.enqueueFirst(envelope);
-        } else {
-            this.messageQueue.enqueue(envelope);
-        }
-
-        if (messageQueue.isRunning()) {
-            try {
-                dispatcher.execute(() -> deliverNextPending());
-            } catch (RejectedExecutionException rje) {
-                LOG.debug("Rejected on attempt to queue message dispatch", rje);
+        stateLock.lock();
+        try {
+            if (envelope.isEnqueueFirst()) {
+                this.messageQueue.enqueueFirst(envelope);
+            } else {
+                this.messageQueue.enqueue(envelope);
             }
+
+            if (messageQueue.isRunning()) {
+                try {
+                    dispatcher.execute(() -> deliverNextPending());
+                } catch (RejectedExecutionException rje) {
+                    LOG.debug("Rejected on attempt to queue message dispatch", rje);
+                }
+            }
+        } finally {
+            stateLock.unlock();
         }
     }
 
@@ -154,9 +160,14 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
     }
 
     public void start() {
-        if (!messageQueue.isRunning()) {
-            this.messageQueue.start();
-            this.dispatcher.execute(new BoundedMessageDeliverTask(messageQueue.size()));
+        stateLock.lock();
+        try {
+            if (!messageQueue.isRunning()) {
+                this.messageQueue.start();
+                this.dispatcher.execute(new BoundedMessageDeliverTask(messageQueue.size()));
+            }
+        } finally {
+            stateLock.unlock();
         }
     }
 
@@ -166,6 +177,7 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
 
     private void stop(boolean closeMessageQueue) {
         dispatchLock.lock();
+        stateLock.lock();
         try {
             if (closeMessageQueue) {
                 this.messageQueue.close();
@@ -173,6 +185,7 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
                 this.messageQueue.stop();
             }
         } finally {
+            stateLock.unlock();
             dispatchLock.unlock();
         }
     }
