@@ -715,16 +715,9 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
                     acknowledge(envelope, lookupAckTypeForDisposition(redeliveryPolicy.getOutcome(envelope.getConsumerInfo().getDestination())));
                 } else {
                     boolean deliveryFailed = false;
-                    boolean autoAckOrDupsOk = acknowledgementMode == Session.AUTO_ACKNOWLEDGE ||
-                                              acknowledgementMode == Session.DUPS_OK_ACKNOWLEDGE;
-                    if (autoAckOrDupsOk) {
-                        acknowledge(envelope, ACK_TYPE.DELIVERED);
-                        copy = envelope.getMessage().copy();
-                    } else {
-                        // TODO - There shouldn't be other ACK modes in use here ?
-                        acknowledge(envelope, ACK_TYPE.DELIVERED);
-                        copy = envelope.getMessage().copy();
-                    }
+
+                    copy = acknowledge(envelope, ACK_TYPE.DELIVERED).getMessage().copy();
+
                     clearSessionRecovered();
 
                     try {
@@ -733,7 +726,7 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
                         deliveryFailed = true;
                     }
 
-                    if (autoAckOrDupsOk && !isSessionRecovered()) {
+                    if (!isSessionRecovered()) {
                         if (!deliveryFailed) {
                             acknowledge(envelope, ACK_TYPE.ACCEPTED);
                         } else {
@@ -947,8 +940,9 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
         }
     }
 
-    void acknowledge(JmsInboundMessageDispatch envelope, ACK_TYPE ackType) throws JMSException {
+    JmsInboundMessageDispatch acknowledge(JmsInboundMessageDispatch envelope, ACK_TYPE ackType) throws JMSException {
         transactionContext.acknowledge(connection, envelope, ackType);
+        return envelope;
     }
 
     /**

@@ -242,6 +242,7 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
                     // There might not be an available session so queue a task to try again
                     // and hope that by then one is available in the pool.
                     dispatcher.schedule(() -> deliverNextPending(), DEFAULT_DISPATCH_RETRY_DELAY, TimeUnit.MILLISECONDS);
+                    return false;
                 }
 
                 Session session = serverSession.getSession();
