@@ -22,12 +22,12 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 
-import org.apache.qpid.jms.provider.amqp.codec.Decoder;
-import org.apache.qpid.jms.provider.amqp.codec.DecoderState;
-import org.apache.qpid.jms.provider.amqp.codec.Encoder;
-import org.apache.qpid.jms.provider.amqp.codec.EncoderState;
-import org.apache.qpid.jms.provider.amqp.codec.decoders.ProtonDecoderFactory;
-import org.apache.qpid.jms.provider.amqp.codec.encoders.ProtonEncoderFactory;
+import org.apache.qpid.jms.codec.Decoder;
+import org.apache.qpid.jms.codec.DecoderState;
+import org.apache.qpid.jms.codec.Encoder;
+import org.apache.qpid.jms.codec.EncoderState;
+import org.apache.qpid.jms.codec.decoders.ProtonDecoderFactory;
+import org.apache.qpid.jms.codec.encoders.ProtonEncoderFactory;
 import org.apache.qpid.proton.amqp.UnsignedByte;
 import org.apache.qpid.proton.amqp.UnsignedInteger;
 import org.junit.Before;

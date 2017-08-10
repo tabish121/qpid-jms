@@ -18,10 +18,10 @@ package org.apache.qpid.jms.provider.amqp.message;
 
 import java.io.IOException;
 
-import org.apache.qpid.jms.provider.amqp.codec.DecoderState;
-import org.apache.qpid.jms.provider.amqp.codec.DescribedTypeDecoder;
-import org.apache.qpid.jms.provider.amqp.codec.TypeDecoder;
-import org.apache.qpid.jms.provider.amqp.codec.decoders.primitive.ListTypeDecoder;
+import org.apache.qpid.jms.codec.DecoderState;
+import org.apache.qpid.jms.codec.DescribedTypeDecoder;
+import org.apache.qpid.jms.codec.TypeDecoder;
+import org.apache.qpid.jms.codec.decoders.primitives.ListTypeDecoder;
 import org.apache.qpid.proton.amqp.Symbol;
 import org.apache.qpid.proton.amqp.UnsignedLong;
 
@@ -30,7 +30,7 @@ import io.netty.buffer.ByteBuf;
 /**
  * Decoder of AMQP Header types from a byte stream
  */
-public class AmqpHeaderTypeDecoder implements DescribedTypeDecoder<AmqpHeader>, ListTypeDecoder.ListEntryHandler {
+public class AmqpHeaderTypeDecoder implements DescribedTypeDecoder<AmqpHeader>, ListTypeDecoder.ListEntryHandler<AmqpHeader> {
 
     private static final UnsignedLong descriptorCode = UnsignedLong.valueOf(0x0000000000000070L);
     private static final Symbol descriptorSymbol = Symbol.valueOf("amqp:header:list");
@@ -68,8 +68,8 @@ public class AmqpHeaderTypeDecoder implements DescribedTypeDecoder<AmqpHeader>, 
     }
 
     @Override
-    public void onListEntry(int index, Object target, ByteBuf buffer, DecoderState state) throws IOException {
-        AmqpHeader header = (AmqpHeader) target;
+    public void onListEntry(int index, AmqpHeader target, ByteBuf buffer, DecoderState state) throws IOException {
+        AmqpHeader header = target;
 
         switch (index) {
             case 4:

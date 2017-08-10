@@ -31,15 +31,16 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
+import org.apache.qpid.jms.codec.CodecFactory;
+import org.apache.qpid.jms.codec.Decoder;
+import org.apache.qpid.jms.codec.DecoderState;
+import org.apache.qpid.jms.codec.Encoder;
+import org.apache.qpid.jms.codec.EncoderState;
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
-import org.apache.qpid.jms.provider.amqp.codec.CodecFactory;
-import org.apache.qpid.jms.provider.amqp.codec.Decoder;
-import org.apache.qpid.jms.provider.amqp.codec.DecoderState;
-import org.apache.qpid.jms.provider.amqp.codec.Encoder;
-import org.apache.qpid.jms.provider.amqp.codec.EncoderState;
 import org.apache.qpid.jms.util.ContentTypeSupport;
 import org.apache.qpid.jms.util.InvalidContentTypeException;
 import org.apache.qpid.proton.amqp.Binary;
+import org.apache.qpid.proton.amqp.Symbol;
 import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
 import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
@@ -47,6 +48,7 @@ import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.DeliveryAnnotations;
 import org.apache.qpid.proton.amqp.messaging.Footer;
 import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
+import org.apache.qpid.proton.amqp.messaging.Properties;
 import org.apache.qpid.proton.amqp.messaging.Section;
 import org.apache.qpid.proton.codec.AMQPDefinedTypes;
 import org.apache.qpid.proton.codec.DecoderImpl;
@@ -67,8 +69,6 @@ public final class AmqpCodec {
     static {
         amqpDecoder.registerDescribedTypeDecoder(new AmqpHeaderTypeDecoder());
         amqpEncoder.registerTypeEncoder(new AmqpHeaderTypeEncoder());
-        amqpDecoder.registerDescribedTypeDecoder(new AmqpPropertiesTypeDecoder());
-        amqpEncoder.registerTypeEncoder(new AmqpPropertiesTypeEncoder());
     }
 
     private static class EncoderDecoderPair {
@@ -178,7 +178,7 @@ public final class AmqpCodec {
         AmqpHeader header = message.getAmqpHeader();
         DeliveryAnnotations deliveryAnnotations = message.getDeliveryAnnotations();
         MessageAnnotations messageAnnotations = message.getMessageAnnotations();
-        AmqpProperties properties = message.getAmqpProperties();
+        Properties properties = message.getProperties();
         ApplicationProperties applicationProperties = message.getApplicationProperties();
         Section body = message.getBody();
         Footer footer = message.getFooter();
@@ -228,7 +228,7 @@ public final class AmqpCodec {
         AmqpHeader header = null;
         DeliveryAnnotations deliveryAnnotations = null;
         MessageAnnotations messageAnnotations = null;
-        AmqpProperties properties = null;
+        Properties properties = null;
         ApplicationProperties applicationProperties = null;
         Section body = null;
         Footer footer = null;
@@ -267,8 +267,8 @@ public final class AmqpCodec {
             }
 
         }
-        if (section instanceof AmqpProperties) {
-            properties = (AmqpProperties) section;
+        if (section instanceof Properties) {
+            properties = (Properties) section;
 
             if (messageBytes.isReadable()) {
                 section = (Section) amqpDecoder.readObject(messageBytes, state);
@@ -314,7 +314,7 @@ public final class AmqpCodec {
             result.setAmqpHeader(header);
             result.setDeliveryAnnotations(deliveryAnnotations);
             result.setMessageAnnotations(messageAnnotations);
-            result.setAmqpProperties(properties);
+            result.setProperties(properties);
             result.setApplicationProperties(applicationProperties);
             result.setBody(body);
             result.setFooter(footer);
@@ -350,8 +350,8 @@ public final class AmqpCodec {
         return null;
     }
 
-    private static AmqpJmsMessageFacade createWithoutAnnotation(Section body, AmqpProperties properties) {
-        String messageContentType = properties != null ? properties.getContentType() : null;
+    private static AmqpJmsMessageFacade createWithoutAnnotation(Section body, Properties properties) {
+        Symbol messageContentType = properties != null ? properties.getContentType() : null;
 
         if (body == null) {
             if (isContentType(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE, messageContentType)) {
@@ -396,10 +396,10 @@ public final class AmqpCodec {
         return null;
     }
 
-    private static Charset getCharsetForTextualContent(String messageContentType) {
+    private static Charset getCharsetForTextualContent(Symbol messageContentType) {
         if (messageContentType != null) {
             try {
-                return ContentTypeSupport.parseContentTypeForTextualCharset(messageContentType);
+                return ContentTypeSupport.parseContentTypeForTextualCharset(messageContentType.toString());
             } catch (InvalidContentTypeException e) {
             }
         }

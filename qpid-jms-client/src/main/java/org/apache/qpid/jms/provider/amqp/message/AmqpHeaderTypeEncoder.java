@@ -16,9 +16,9 @@
  */
 package org.apache.qpid.jms.provider.amqp.message;
 
-import org.apache.qpid.jms.provider.amqp.codec.DescribedListTypeEncoder;
-import org.apache.qpid.jms.provider.amqp.codec.EncoderState;
-import org.apache.qpid.jms.provider.amqp.codec.EncodingCodes;
+import org.apache.qpid.jms.codec.DescribedListTypeEncoder;
+import org.apache.qpid.jms.codec.EncoderState;
+import org.apache.qpid.jms.codec.EncodingCodes;
 import org.apache.qpid.proton.amqp.Symbol;
 import org.apache.qpid.proton.amqp.UnsignedLong;
 

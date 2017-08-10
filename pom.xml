@@ -94,7 +94,6 @@
     <module>qpid-jms-examples</module>
     <module>qpid-jms-docs</module>
     <module>apache-qpid-jms</module>
-    <module>qpid-jms-amqp-codec</module>
   </modules>
 
   <dependencyManagement>
@@ -108,11 +107,6 @@
       <dependency>
         <groupId>org.apache.qpid</groupId>
         <artifactId>qpid-jms-discovery</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.apache.qpid</groupId>
-        <artifactId>qpid-jms-amqp-codec</artifactId>
         <version>${project.version}</version>
       </dependency>
       <!-- Required dependencies -->
