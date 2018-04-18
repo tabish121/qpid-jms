@@ -131,4 +131,18 @@ public interface Transport {
      */
     int getMaxFrameSize();
 
+    /**
+     * Sets the {@link TransportPlugin} to be used by this Transport
+     *
+     * @param plugin
+     * 		The {@link TransportPlugin} that will be used by this Transport.
+     */
+    void setTransportPlugin(TransportPlugin plugin);
+
+    /**
+     * Gets the currently assigned {@link TransportPlugin} of this Transport.
+     * @return the currently assigned {@link TransportPlugin} of this Transport.
+     */
+    TransportPlugin getTransportPlugin();
+
 }

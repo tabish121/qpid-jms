@@ -28,6 +28,7 @@ import javax.net.ssl.SSLContext;
 import org.apache.qpid.jms.transports.Transport;
 import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.transports.TransportOptions;
+import org.apache.qpid.jms.transports.TransportPlugin;
 import org.apache.qpid.jms.transports.TransportSslOptions;
 import org.apache.qpid.jms.transports.TransportSupport;
 import org.apache.qpid.jms.util.IOExceptionSupport;
@@ -71,6 +72,7 @@ public class NettyTcpTransport implements Transport {
     public static final int SHUTDOWN_TIMEOUT = 50;
     public static final int DEFAULT_MAX_FRAME_SIZE = 65535;
 
+    protected TransportPlugin plugin;
     protected Bootstrap bootstrap;
     protected EventLoopGroup group;
     protected Channel channel;
@@ -127,13 +129,23 @@ public class NettyTcpTransport implements Transport {
             throw new IllegalStateException("A transport listener must be set before connection attempts.");
         }
 
+        if (plugin != null) {
+            plugin.configureTransportOptions(this, getTransportOptions());
+        }
+
         final SslHandler sslHandler;
         if (isSecure()) {
             try {
                 TransportSslOptions sslOptions = getSslOptions();
                 sslOptions.setSslContextOverride(sslContextOverride);
 
-                sslHandler = TransportSupport.createSslHandler(getRemoteLocation(), sslOptions);
+                SslHandler handler = TransportSupport.createSslHandler(getRemoteLocation(), sslOptions);
+
+                if (plugin instanceof NettyTcpTransportPlugin) {
+                    sslHandler = ((NettyTcpTransportPlugin) plugin).configureSslHandler(this, handler);
+                } else {
+                    sslHandler = handler;
+                }
             } catch (Exception ex) {
                 // TODO: can we stop it throwing Exception?
                 throw IOExceptionSupport.create(ex);
@@ -310,6 +322,16 @@ public class NettyTcpTransport implements Transport {
     @Override
     public int getMaxFrameSize() {
         return maxFrameSize;
+    }
+
+    @Override
+    public void setTransportPlugin(TransportPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    @Override
+    public TransportPlugin getTransportPlugin() {
+        return plugin;
     }
 
     //----- Internal implementation details, can be overridden as needed -----//

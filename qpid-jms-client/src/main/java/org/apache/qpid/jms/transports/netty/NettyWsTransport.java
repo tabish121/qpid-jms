@@ -33,6 +33,7 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
@@ -112,16 +113,27 @@ public class NettyWsTransport extends NettyTcpTransport {
 
     private class NettyWebSocketTransportHandler extends NettyDefaultHandler<Object> {
 
-        private final WebSocketClientHandshaker handshaker;
+        private WebSocketClientHandshaker handshaker;
 
         public NettyWebSocketTransportHandler() {
-            handshaker = WebSocketClientHandshakerFactory.newHandshaker(
-                getRemoteLocation(), WebSocketVersion.V13, AMQP_SUB_PROTOCOL,
-                true, new DefaultHttpHeaders(), getMaxFrameSize());
         }
 
         @Override
         public void channelActive(ChannelHandlerContext context) throws Exception {
+            HttpHeaders headers = new DefaultHttpHeaders();
+
+            if (plugin instanceof NettyWsTransportPlugin) {
+                headers = ((NettyWsTransportPlugin) plugin).configurHttpHeaders(NettyWsTransport.this, headers);
+            }
+
+            handshaker = WebSocketClientHandshakerFactory.newHandshaker(
+                getRemoteLocation(), WebSocketVersion.V13, AMQP_SUB_PROTOCOL,
+                true, headers, getMaxFrameSize());
+
+            if (plugin instanceof NettyWsTransportPlugin) {
+                handshaker = ((NettyWsTransportPlugin) plugin).configureHandshaker(NettyWsTransport.this, handshaker);
+            }
+
             handshaker.handshake(context.channel());
 
             super.channelActive(context);

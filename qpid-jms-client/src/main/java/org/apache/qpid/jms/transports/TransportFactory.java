@@ -53,6 +53,24 @@ public abstract class TransportFactory {
 
         remoteURI = PropertyUtil.replaceQuery(remoteURI, map);
 
+        TransportPlugin plugin = null;
+
+        String pluginName = transportURIOptions.remove("plugin");
+        if (pluginName != null && !pluginName.isEmpty()) {
+            plugin = TransportPluginFactory.create(pluginName);
+            String pluginPrefix = plugin.getConfigurationPrefix();
+
+            Map<String, String> pluginURIOptions = PropertyUtil.filterProperties(map, pluginPrefix + ".");
+            Map<String, String> unused = PropertyUtil.setProperties(plugin, pluginURIOptions);
+            if (!unused.isEmpty()) {
+                String msg = " Not all transport plugin options could be set on the " + getName() +
+                             " TransportPlugin. Check the options are spelled correctly." +
+                             " Unused parameters=[" + unused + "]." +
+                             " This provider instance cannot be started.";
+                throw new IllegalArgumentException(msg);
+            }
+        }
+
         TransportOptions transportOptions = doCreateTransportOptions();
 
         Map<String, String> unused = PropertyUtil.setProperties(transportOptions, transportURIOptions);
@@ -65,6 +83,13 @@ public abstract class TransportFactory {
         }
 
         Transport result = doCreateTransport(remoteURI, transportOptions);
+        if (plugin != null && !plugin.isApplicable(result)) {
+            String msg = "The configured TransportPlugin[" + pluginName +
+                         " is not applicable for the configured transport " + remoteURI.getScheme();
+            throw new IllegalStateException(msg);
+        }
+
+        result.setTransportPlugin(plugin);
 
         return result;
     }
