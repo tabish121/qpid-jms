@@ -72,6 +72,28 @@ public interface Transport {
     ByteBuf allocateSendBuffer(int size) throws IOException;
 
     /**
+     * Writes a chunk of data over the Transport connection without performing an
+     * explicit flush on the transport.
+     *
+     * @param output
+     *        The buffer of data that is to be transmitted.
+     *
+     * @throws IOException if an error occurs during the send operation.
+     */
+    void write(ByteBuf output) throws IOException;
+
+    /**
+     * Writes a chunk of data over the Transport connection and requests a flush of
+     * all pending queued write operations
+     *
+     * @param output
+     *        The buffer of data that is to be transmitted.
+     *
+     * @throws IOException if an error occurs during the send operation.
+     */
+    void writeAndFlush(ByteBuf output) throws IOException;
+
+    /**
      * Sends a chunk of data over the Transport connection.
      *
      * @param output
@@ -79,7 +101,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs during the send operation.
      */
-    void send(ByteBuf output) throws IOException;
+    void flush() throws IOException;
 
     /**
      * Gets the currently set TransportListener instance

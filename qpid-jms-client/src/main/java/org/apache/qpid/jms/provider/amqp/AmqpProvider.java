@@ -116,6 +116,8 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
     private static final AtomicInteger PROVIDER_SEQUENCE = new AtomicInteger();
     private static final NoOpAsyncResult NOOP_REQUEST = new NoOpAsyncResult();
 
+    private static final int MAX_WRITE_BYTES_BEFORE_FLUSH = 256 * 1024;
+
     private volatile ProviderListener listener;
     private volatile AmqpConnection connection;
     private AmqpSaslAuthenticator authenticator;
@@ -695,8 +697,9 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                         request.onSuccess();
                         pumpToProtonTransport(request);
                     } else {
-                        pumpToProtonTransport(request);
+                        pumpToProtonTransport(request, false);
                         request.onSuccess();
+                        transport.flush();
                     }
                 } catch (Throwable t) {
                     request.onFailure(t);
@@ -1037,12 +1040,19 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
     }
 
     protected boolean pumpToProtonTransport() {
-        return pumpToProtonTransport(NOOP_REQUEST);
+        return pumpToProtonTransport(NOOP_REQUEST, true);
     }
 
     protected boolean pumpToProtonTransport(AsyncResult request) {
+        return pumpToProtonTransport(NOOP_REQUEST, true);
+    }
+
+    protected boolean pumpToProtonTransport(AsyncResult request, boolean flush) {
         try {
             boolean done = false;
+            boolean flushRequired = false;
+            int bytesWritten = 0;
+
             while (!done) {
                 ByteBuffer toWrite = protonTransport.getOutputBuffer();
                 if (toWrite != null && toWrite.hasRemaining()) {
@@ -1053,11 +1063,24 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                         TRACE_BYTES.info("Sending: {}", ByteBufUtil.hexDump(outbound));
                     }
 
-                    transport.send(outbound);
+                    bytesWritten += outbound.readableBytes();
+                    if (flush && bytesWritten >= MAX_WRITE_BYTES_BEFORE_FLUSH) {
+                        transport.flush();
+                        bytesWritten = 0;
+                        flushRequired = false;
+                    } else {
+                        flushRequired = true;
+                    }
+
+                    transport.write(outbound);
                     protonTransport.outputConsumed();
                 } else {
                     done = true;
                 }
+            }
+
+            if (flushRequired && flush) {
+                transport.flush();
             }
         } catch (IOException e) {
             fireProviderException(e);

@@ -262,12 +262,24 @@ public class NettyTcpTransport implements Transport {
     }
 
     @Override
-    public void send(ByteBuf output) throws IOException {
+    public void write(ByteBuf output) throws IOException {
         checkConnected(output);
-
         LOG.trace("Attempted write of: {} bytes", output.readableBytes());
+        channel.write(output);
+    }
 
+    @Override
+    public void writeAndFlush(ByteBuf output) throws IOException {
+        checkConnected(output);
+        LOG.trace("Attempted write of: {} bytes", output.readableBytes());
         channel.writeAndFlush(output);
+    }
+
+    @Override
+    public void flush() throws IOException {
+        checkConnected();
+        LOG.trace("Attempted flush of pending writes");
+        channel.flush();
     }
 
     @Override
@@ -383,7 +395,7 @@ public class NettyTcpTransport implements Transport {
     }
 
     private void checkConnected(ByteBuf output) throws IOException {
-        if (!connected.get()) {
+        if (!connected.get() || !channel.isActive()) {
             ReferenceCountUtil.release(output);
             throw new IOException("Cannot send to a non-connected transport.");
         }
