@@ -22,8 +22,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 import javax.jms.JMSException;
 
@@ -40,12 +38,8 @@ import org.apache.qpid.jms.provider.amqp.builders.AmqpSessionBuilder;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpTemporaryDestinationBuilder;
 import org.apache.qpid.jms.provider.amqp.message.AmqpJmsMessageFactory;
 import org.apache.qpid.proton.engine.Connection;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Connection> implements AmqpResourceParent {
-
-    private static final Logger LOG = LoggerFactory.getLogger(AmqpConnection.class);
 
     private AmqpSubscriptionTracker subTracker = new AmqpSubscriptionTracker();
 
@@ -274,25 +268,6 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
 
     public AmqpSubscriptionTracker getSubTracker() {
         return subTracker;
-    }
-
-    /**
-     * Allows a connection resource to schedule a task for future execution.
-     *
-     * @param task
-     *      The Runnable task to be executed after the given delay.
-     * @param delay
-     *      The delay in milliseconds to schedule the given task for execution.
-     *
-     * @return a ScheduledFuture instance that can be used to cancel the task.
-     */
-    public ScheduledFuture<?> schedule(final Runnable task, long delay) {
-        if (task == null) {
-            LOG.trace("Resource attempted to schedule a null task.");
-            return null;
-        }
-
-        return getProvider().getScheduler().schedule(task, delay, TimeUnit.MILLISECONDS);
     }
 
     @Override

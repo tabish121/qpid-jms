@@ -21,7 +21,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 import javax.jms.IllegalStateException;
 
@@ -38,12 +37,8 @@ import org.apache.qpid.jms.provider.ProviderConstants.ACK_TYPE;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpConsumerBuilder;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpProducerBuilder;
 import org.apache.qpid.proton.engine.Session;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> implements AmqpResourceParent {
-
-    private static final Logger LOG = LoggerFactory.getLogger(AmqpSession.class);
 
     private final AmqpConnection connection;
     private final AmqpTransactionContext txContext;
@@ -195,12 +190,7 @@ public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> i
      * @return a ScheduledFuture instance that can be used to cancel the task.
      */
     public ScheduledFuture<?> schedule(final Runnable task, long delay) {
-        if (task == null) {
-            LOG.trace("Resource attempted to schedule a null task.");
-            return null;
-        }
-
-        return getProvider().getScheduler().schedule(task, delay, TimeUnit.MILLISECONDS);
+        return getProvider().schedule(task, delay);
     }
 
     @Override
