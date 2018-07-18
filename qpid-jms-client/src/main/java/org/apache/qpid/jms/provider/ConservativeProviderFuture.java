@@ -17,9 +17,6 @@
 package org.apache.qpid.jms.provider;
 
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
-
-import org.apache.qpid.jms.util.IOExceptionSupport;
 
 /**
  * A more conservative implementation of a ProviderFuture that is better on some
@@ -38,91 +35,7 @@ public class ConservativeProviderFuture extends ProviderFuture {
     }
 
     @Override
-    public boolean sync(long amount, TimeUnit unit) throws IOException {
-        try {
-            if (isComplete() || amount == 0) {
-                failOnError();
-                return true;
-            }
-
-            final long timeout = unit.toNanos(amount);
-            long maxParkNanos = timeout / 8;
-            maxParkNanos = maxParkNanos > 0 ? maxParkNanos : timeout;
-            final long startTime = System.nanoTime();
-
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException();
-            }
-
-            while (true) {
-                final long elapsed = System.nanoTime() - startTime;
-                final long diff = elapsed - timeout;
-
-                if (diff >= 0) {
-                    failOnError();
-                    return isComplete();
-                }
-
-                if (isComplete()) {
-                    failOnError();
-                    return true;
-                }
-
-                synchronized (this) {
-                    if (isComplete()) {
-                        failOnError();
-                        return true;
-                    }
-
-                    waiting++;
-                    try {
-                        wait(-diff / 1000000, (int) (-diff % 1000000));
-                    } finally {
-                        waiting--;
-                    }
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.interrupted();
-            throw IOExceptionSupport.create(e);
-        }
-    }
-
-    @Override
-    public void sync() throws IOException {
-        try {
-            if (isComplete()) {
-                failOnError();
-                return;
-            }
-
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException();
-            }
-
-            while (true) {
-                if (isComplete()) {
-                    failOnError();
-                    return;
-                }
-
-                synchronized (this) {
-                    if (isComplete()) {
-                        failOnError();
-                        return;
-                    }
-
-                    waiting++;
-                    try {
-                        wait();
-                    } finally {
-                        waiting--;
-                    }
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.interrupted();
-            throw IOExceptionSupport.create(e);
-        }
+    public void quickSync() throws IOException {
+        super.sync();
     }
 }

@@ -17,7 +17,6 @@
 package org.apache.qpid.jms.provider;
 
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 import org.apache.qpid.jms.util.IOExceptionSupport;
@@ -46,74 +45,7 @@ public class ProgressiveProviderFuture extends ProviderFuture {
     }
 
     @Override
-    public boolean sync(long amount, TimeUnit unit) throws IOException {
-        try {
-            if (isComplete() || amount == 0) {
-                failOnError();
-                return true;
-            }
-
-            final long timeout = unit.toNanos(amount);
-            long maxParkNanos = timeout / 8;
-            maxParkNanos = maxParkNanos > 0 ? maxParkNanos : timeout;
-            final long tinyParkNanos = Math.min(maxParkNanos, TINY_PARK_NANOS);
-            final long smallParkNanos = Math.min(maxParkNanos, SMALL_PARK_NANOS);
-            final long startTime = System.nanoTime();
-            int idleCount = 0;
-
-            if (Thread.currentThread().isInterrupted()) {
-                throw new InterruptedException();
-            }
-
-            while (true) {
-                final long elapsed = System.nanoTime() - startTime;
-                final long diff = elapsed - timeout;
-
-                if (diff >= 0) {
-                    failOnError();
-                    return isComplete();
-                }
-
-                if (isComplete()) {
-                    failOnError();
-                    return true;
-                }
-
-                if (idleCount < SPIN_COUNT) {
-                    idleCount++;
-                } else if (idleCount < YIELD_COUNT) {
-                    Thread.yield();
-                    idleCount++;
-                } else if (idleCount < TINY_PARK_COUNT) {
-                    LockSupport.parkNanos(tinyParkNanos);
-                    idleCount++;
-                } else if (idleCount < SMALL_PARK_COUNT) {
-                    LockSupport.parkNanos(smallParkNanos);
-                    idleCount++;
-                } else {
-                    synchronized (this) {
-                        if (isComplete()) {
-                            failOnError();
-                            return true;
-                        }
-
-                        waiting++;
-                        try {
-                            wait(-diff / 1000000, (int) (-diff % 1000000));
-                        } finally {
-                            waiting--;
-                        }
-                    }
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.interrupted();
-            throw IOExceptionSupport.create(e);
-        }
-    }
-
-    @Override
-    public void sync() throws IOException {
+    public void quickSync() throws IOException {
         try {
             if (isComplete()) {
                 failOnError();

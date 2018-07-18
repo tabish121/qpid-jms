@@ -91,11 +91,55 @@ public abstract class ProviderFuture implements AsyncResult {
     }
 
     /**
+     * Waits for a response to some Provider requested operation with the expectation
+     * that the operation is going to completely because the remote interaction is
+     * asynchronous or the operation is entirely executed locally.
+     *
+     * @throws IOException if an error occurs while waiting for the response.
+     */
+    public abstract void quickSync() throws IOException;
+
+    /**
      * Waits for a response to some Provider requested operation.
      *
      * @throws IOException if an error occurs while waiting for the response.
      */
-    public abstract void sync() throws IOException;
+    public void sync() throws IOException {
+        try {
+            if (isComplete()) {
+                failOnError();
+                return;
+            }
+
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException();
+            }
+
+            while (true) {
+                if (isComplete()) {
+                    failOnError();
+                    return;
+                }
+
+                synchronized (this) {
+                    if (isComplete()) {
+                        failOnError();
+                        return;
+                    }
+
+                    waiting++;
+                    try {
+                        wait();
+                    } finally {
+                        waiting--;
+                    }
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.interrupted();
+            throw IOExceptionSupport.create(e);
+        }
+    }
 
     /**
      * Timed wait for a response to a Provider operation.
@@ -110,7 +154,55 @@ public abstract class ProviderFuture implements AsyncResult {
      *
      * @throws IOException if an error occurs while waiting for the response.
      */
-    public abstract boolean sync(long amount, TimeUnit unit) throws IOException;
+    public boolean sync(long amount, TimeUnit unit) throws IOException {
+        try {
+            if (isComplete() || amount == 0) {
+                failOnError();
+                return true;
+            }
+
+            final long timeout = unit.toNanos(amount);
+            long maxParkNanos = timeout / 8;
+            maxParkNanos = maxParkNanos > 0 ? maxParkNanos : timeout;
+            final long startTime = System.nanoTime();
+
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException();
+            }
+
+            while (true) {
+                final long elapsed = System.nanoTime() - startTime;
+                final long diff = elapsed - timeout;
+
+                if (diff >= 0) {
+                    failOnError();
+                    return isComplete();
+                }
+
+                if (isComplete()) {
+                    failOnError();
+                    return true;
+                }
+
+                synchronized (this) {
+                    if (isComplete()) {
+                        failOnError();
+                        return true;
+                    }
+
+                    waiting++;
+                    try {
+                        wait(-diff / 1000000, (int) (-diff % 1000000));
+                    } finally {
+                        waiting--;
+                    }
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.interrupted();
+            throw IOExceptionSupport.create(e);
+        }
+    }
 
     protected void failOnError() throws IOException {
         Throwable cause = error;

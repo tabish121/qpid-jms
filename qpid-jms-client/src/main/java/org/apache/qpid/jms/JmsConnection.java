@@ -768,7 +768,11 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
             requests.put(request, request);
             try {
                 provider.send(envelope, request);
-                request.sync();
+                if (envelope.isSendAsync() || envelope.isPresettle()) {
+                    request.quickSync();
+                } else {
+                    request.sync();
+                }
             } finally {
                 requests.remove(request);
             }
@@ -787,7 +791,7 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
         try {
             ProviderFuture request = provider.newProviderFuture(synchronization);
             provider.acknowledge(envelope, ackType, request);
-            request.sync();
+            request.quickSync();
         } catch (Exception ioe) {
             throw JmsExceptionSupport.create(ioe);
         }
