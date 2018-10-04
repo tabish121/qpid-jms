@@ -19,6 +19,8 @@ package org.apache.qpid.jms.transports;
 import java.io.IOException;
 import java.net.URI;
 import java.security.Principal;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 
 import javax.net.ssl.SSLContext;
 
@@ -37,9 +39,11 @@ public interface Transport {
      *          a user-provided SSLContext to use if establishing a secure
      *          connection, overrides applicable URI configuration
      *
+     * @return A ScheduledThreadPoolExecutor that can run work on the Transport IO thread.
+     *
      * @throws IOException if an error occurs while attempting the connect.
      */
-    void connect(SSLContext sslContextOverride) throws IOException;
+    ScheduledExecutorService connect(SSLContext sslContextOverride) throws IOException;
 
     /**
      * @return true if transport is connected or false if the connection is down.
@@ -117,6 +121,22 @@ public interface Transport {
      * @throws IllegalArgumentException if the given listener is null.
      */
     void setTransportListener(TransportListener listener);
+
+    /**
+     * @return the {@link ThreadFactory} used to create the IO thread for this Transport
+     */
+    ThreadFactory getThreadFactory();
+
+    /**
+     * Sets the {@link ThreadFactory} that the Transport should use when creating the Transport
+     * IO thread for processing.
+     *
+     * @param factory
+     * 		The {@link ThreadFactory}
+     *
+     * @throws IllegalStateException if called after a call to {@link #connect(SSLContext)}
+     */
+    void setThreadFactory(ThreadFactory factory);
 
     /**
      * @return the TransportOptions instance that holds the configuration for this Transport.

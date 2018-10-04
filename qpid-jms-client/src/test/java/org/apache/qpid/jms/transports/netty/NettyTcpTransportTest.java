@@ -20,6 +20,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
@@ -36,6 +37,7 @@ import org.apache.qpid.jms.test.Wait;
 import org.apache.qpid.jms.transports.Transport;
 import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.transports.TransportOptions;
+import org.apache.qpid.jms.util.QpidJMSThreadFactory;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -89,6 +91,42 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             fail("Should have thrown IllegalArgumentException");
         } catch (IllegalArgumentException iae) {
         }
+    }
+
+    @Test(timeout = 60000)
+    public void testConnectWithCustomThreadFactoryConfigured() throws Exception {
+        try (NettyEchoServer server = createEchoServer(createServerOptions())) {
+            server.start();
+
+            int port = server.getServerPort();
+            URI serverLocation = new URI("tcp://localhost:" + port);
+            QpidJMSThreadFactory factory = new QpidJMSThreadFactory("NettyTransportTest", true);
+
+            Transport transport = createTransport(serverLocation, testListener, createClientOptions());
+            transport.setThreadFactory(factory);
+
+            try {
+                transport.connect(null);
+            } catch (Exception e) {
+                LOG.info("Failed to connect to: {} as expected.", serverLocation);
+                fail("Should have failed to connect to the server: " + serverLocation);
+            }
+
+            assertTrue(transport.isConnected());
+            assertSame(factory, transport.getThreadFactory());
+
+            try {
+                transport.setThreadFactory(factory);
+            } catch (IllegalStateException expected) {
+                LOG.trace("Caught expected state exception");
+            }
+
+            transport.close();
+        }
+
+        assertTrue(!transportClosed);  // Normal shutdown does not trigger the event.
+        assertTrue(exceptions.isEmpty());
+        assertTrue(data.isEmpty());
     }
 
     @Test(timeout = 60 * 1000)
