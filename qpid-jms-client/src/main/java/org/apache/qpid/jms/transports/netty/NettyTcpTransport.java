@@ -129,13 +129,14 @@ public class NettyTcpTransport implements Transport {
     }
 
     @Override
-    public ScheduledExecutorService connect(SSLContext sslContextOverride) throws IOException {
+    public ScheduledExecutorService connect(final Runnable initRoutine, SSLContext sslContextOverride) throws IOException {
+        if (closed.get()) {
+            throw new IllegalStateException("Transport has already been closed");
+        }
 
         if (listener == null) {
             throw new IllegalStateException("A transport listener must be set before connection attempts.");
         }
-
-        getTransportOptions().setSslContextOverride(sslContextOverride);
 
         boolean useKQueue = getTransportOptions().isUseKQueue() && KQueue.isAvailable();
         boolean useEpoll = getTransportOptions().isUseEpoll() && Epoll.isAvailable();
@@ -163,11 +164,19 @@ public class NettyTcpTransport implements Transport {
         bootstrap.handler(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(Channel connectedChannel) throws Exception {
+                if (initRoutine != null) {
+                    try {
+                        initRoutine.run();
+                    } catch (Throwable initError) {
+                        failureCause = IOExceptionSupport.create(initError);
+                    }
+                }
                 configureChannel(connectedChannel);
             }
         });
 
         configureNetty(bootstrap, getTransportOptions());
+        getTransportOptions().setSslContextOverride(sslContextOverride);
 
         ChannelFuture future = bootstrap.connect(getRemoteHost(), getRemotePort());
         future.addListener(new ChannelFutureListener() {
@@ -212,7 +221,7 @@ public class NettyTcpTransport implements Transport {
             });
         }
 
-        return channel.eventLoop();
+        return group;
     }
 
     @Override

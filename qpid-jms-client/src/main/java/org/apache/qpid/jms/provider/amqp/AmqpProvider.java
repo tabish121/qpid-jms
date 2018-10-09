@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
@@ -73,7 +74,6 @@ import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.util.IOExceptionSupport;
 import org.apache.qpid.jms.util.PropertyUtil;
 import org.apache.qpid.jms.util.QpidJMSThreadFactory;
-import org.apache.qpid.jms.util.ThreadPoolUtils;
 import org.apache.qpid.proton.engine.Collector;
 import org.apache.qpid.proton.engine.Connection;
 import org.apache.qpid.proton.engine.Delivery;
@@ -120,7 +120,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
     private volatile ProviderListener listener;
     private volatile AmqpConnection connection;
-    private volatile AmqpSaslAuthenticator authenticator;
+    private AmqpSaslAuthenticator authenticator;
     private final Transport transport;
     private String vhost;
     private boolean traceFrames;
@@ -171,105 +171,116 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
     public void connect(final JmsConnectionInfo connectionInfo) throws IOException {
         checkClosedOrFailed();
 
+        if (serializer != null) {
+            throw new IllegalStateException("Connect cannot be called more than once");
+        }
+
         final ProviderFuture connectRequest = futureFactory.createFuture();
 
-        this.connectionRequest = connectRequest;
-        this.connectionInfo = connectionInfo;
+        // Configure Transport prior to initialization at which point configuration is set and
+        // cannot be updated.  All further interaction should take place on the serializer for
+        // thread safety.
+
+        ThreadFactory transportThreadFactory = new QpidJMSThreadFactory(
+                "AmqpProvider :(" + PROVIDER_SEQUENCE.incrementAndGet() + "):[" +
+                remoteURI.getScheme() + "://" + remoteURI.getHost() + ":" + remoteURI.getPort() + "]", true);
+
+        transport.setThreadFactory(transportThreadFactory);
+        transport.setTransportListener(AmqpProvider.this);
+        transport.setMaxFrameSize(maxFrameSize);
+
+        final SSLContext sslContextOverride;
+        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.SSL_CONTEXT)) {
+            sslContextOverride =
+                (SSLContext) connectionInfo.getExtensionMap().get(
+                    JmsConnectionExtensions.SSL_CONTEXT).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
+        } else {
+            sslContextOverride = null;
+        }
+
+        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.HTTP_HEADERS_OVERRIDE)) {
+            @SuppressWarnings({ "unchecked" })
+            Map<String, String> headers = (Map<String, String>)
+                connectionInfo.getExtensionMap().get(
+                    JmsConnectionExtensions.HTTP_HEADERS_OVERRIDE).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
+            if (headers != null) {
+                transport.getTransportOptions().getHttpHeaders().putAll(headers);
+            }
+        }
 
         try {
-            protonTransport.setEmitFlowEventOnSend(false);
+            serializer = transport.connect(() -> {
+                this.connectionInfo = connectionInfo;
+                this.connectionRequest = connectRequest;
 
-            try {
-                ((TransportInternal) protonTransport).setUseReadOnlyOutputBuffer(false);
-            } catch (NoSuchMethodError nsme) {
-                // using a version at runtime where the optimisation isn't available, ignore
-                LOG.trace("Proton output buffer optimisation unavailable");
-            }
+                protonTransport.setEmitFlowEventOnSend(false);
 
-            if (getMaxFrameSize() > 0) {
-                protonTransport.setMaxFrameSize(getMaxFrameSize());
-                protonTransport.setOutboundFrameSizeLimit(getMaxFrameSize());
-            }
-
-            protonTransport.setChannelMax(getChannelMax());
-            protonTransport.setIdleTimeout(idleTimeout);
-            protonTransport.bind(protonConnection);
-            protonConnection.collect(protonCollector);
-
-            final SSLContext sslContextOverride;
-            if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.SSL_CONTEXT)) {
-                sslContextOverride =
-                    (SSLContext) connectionInfo.getExtensionMap().get(
-                        JmsConnectionExtensions.SSL_CONTEXT).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
-            } else {
-                sslContextOverride = null;
-            }
-
-            ThreadFactory transportThreadFactory = new QpidJMSThreadFactory(
-                  "AmqpProvider :(" + PROVIDER_SEQUENCE.incrementAndGet() + "):[" +
-                  remoteURI.getScheme() + "://" + remoteURI.getHost() + ":" + remoteURI.getPort() + "]", true);
-
-            transport.setThreadFactory(transportThreadFactory);
-            transport.setTransportListener(AmqpProvider.this);
-            transport.setMaxFrameSize(maxFrameSize);
-
-            if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.HTTP_HEADERS_OVERRIDE)) {
-                @SuppressWarnings({ "unchecked" })
-                Map<String, String> headers = (Map<String, String>)
-                    connectionInfo.getExtensionMap().get(
-                        JmsConnectionExtensions.HTTP_HEADERS_OVERRIDE).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
-                if (headers != null) {
-                    transport.getTransportOptions().getHttpHeaders().putAll(headers);
-                }
-            }
-
-            if (saslLayer) {
-                Sasl sasl = protonTransport.sasl();
-                sasl.client();
-
-                String hostname = getVhost();
-                if (hostname == null) {
-                    hostname = remoteURI.getHost();
-                } else if (hostname.isEmpty()) {
-                    hostname = null;
+                try {
+                    ((TransportInternal) protonTransport).setUseReadOnlyOutputBuffer(false);
+                } catch (NoSuchMethodError nsme) {
+                    // using a version at runtime where the optimisation isn't available, ignore
+                    LOG.trace("Proton output buffer optimisation unavailable");
                 }
 
-                sasl.setRemoteHostname(hostname);
-                sasl.setListener(new SaslListener() {
+                if (getMaxFrameSize() > 0) {
+                    protonTransport.setMaxFrameSize(getMaxFrameSize());
+                    protonTransport.setOutboundFrameSizeLimit(getMaxFrameSize());
+                }
 
-                    @Override
-                    public void onSaslMechanisms(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                        authenticator.handleSaslMechanisms(sasl, transport);
-                        checkSaslAuthenticationState();
+                protonTransport.setChannelMax(getChannelMax());
+                protonTransport.setIdleTimeout(idleTimeout);
+                protonTransport.bind(protonConnection);
+                protonConnection.collect(protonCollector);
+
+                if (saslLayer) {
+                    Sasl sasl = protonTransport.sasl();
+                    sasl.client();
+
+                    String hostname = getVhost();
+                    if (hostname == null) {
+                        hostname = remoteURI.getHost();
+                    } else if (hostname.isEmpty()) {
+                        hostname = null;
                     }
 
-                    @Override
-                    public void onSaslChallenge(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                        authenticator.handleSaslChallenge(sasl, transport);
-                        checkSaslAuthenticationState();
-                    }
+                    sasl.setRemoteHostname(hostname);
+                    sasl.setListener(new SaslListener() {
 
-                    @Override
-                    public void onSaslOutcome(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                        authenticator.handleSaslOutcome(sasl, transport);
-                        checkSaslAuthenticationState();
-                    }
+                        @Override
+                        public void onSaslMechanisms(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
+                            authenticator.handleSaslMechanisms(sasl, transport);
+                            checkSaslAuthenticationState();
+                        }
 
-                    @Override
-                    public void onSaslInit(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                        // Server only event
-                    }
+                        @Override
+                        public void onSaslChallenge(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
+                            authenticator.handleSaslChallenge(sasl, transport);
+                            checkSaslAuthenticationState();
+                        }
 
-                    @Override
-                    public void onSaslResponse(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                        // Server only event
-                    }
-                });
+                        @Override
+                        public void onSaslOutcome(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
+                            authenticator.handleSaslOutcome(sasl, transport);
+                            checkSaslAuthenticationState();
+                        }
 
-                authenticator = new AmqpSaslAuthenticator((remoteMechanisms) -> findSaslMechanism(remoteMechanisms));
-            }
+                        @Override
+                        public void onSaslInit(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
+                            // Server only event
+                        }
 
-            serializer = transport.connect(sslContextOverride);
+                        @Override
+                        public void onSaslResponse(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
+                            // Server only event
+                        }
+                    });
+
+                    authenticator = new AmqpSaslAuthenticator((remoteMechanisms) -> findSaslMechanism(remoteMechanisms));
+                }
+            }, sslContextOverride);
+
+            // Once connected pump the transport to write the header and respond to any
+            // data that arrived at connect such as pipelined Header etc
             serializer.execute(() -> pumpToProtonTransport());
 
             if (!saslLayer) {
@@ -302,54 +313,61 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         if (closed.compareAndSet(false, true)) {
             final ProviderFuture request = futureFactory.createUnfailableFuture();
 
-            // Transport never connected or failed on connect so no action needed.
-            if (serializer == null) {
-                return;
-            }
-
-            serializer.execute(() -> {
-
+            // Possible that the connect call failed before calling transport connect or the connect
+            // call failed and shutdown the event loop in which case we have no work to do other than
+            // to clean up the transport by closing it down.
+            if (serializer != null && !serializer.isShutdown()) {
                 try {
-                    // If we are not connected then there is nothing we can do now
-                    // just signal success.
-                    if (transport == null || !transport.isConnected()) {
-                        request.onSuccess();
-                        return;
-                    }
+                    serializer.execute(() -> {
+                        try {
+                            // If we are not connected then there is nothing we can do now
+                            // just signal success.
+                            if (transport == null || !transport.isConnected()) {
+                                request.onSuccess();
+                                return;
+                            }
 
-                    if (connection != null) {
-                        connection.close(request);
-                    } else {
-                        // If the SASL authentication occurred but failed then we don't
-                        // need to do an open / close
-                        if (authenticator != null && (!authenticator.isComplete() || !authenticator.wasSuccessful())) {
-                            request.onSuccess();
-                            return;
+                            if (connection != null) {
+                                connection.close(request);
+                            } else {
+                                // If the SASL authentication occurred but failed then we don't
+                                // need to do an open / close
+                                if (authenticator != null && (!authenticator.isComplete() || !authenticator.wasSuccessful())) {
+                                    request.onSuccess();
+                                    return;
+                                }
+
+                                // Connection attempt might have been tried and failed so only perform
+                                // an open / close cycle if one hasn't been done already.
+                                if (protonConnection.getLocalState() == EndpointState.UNINITIALIZED) {
+                                    AmqpClosedConnectionBuilder builder = new AmqpClosedConnectionBuilder(getProvider(), connectionInfo);
+                                    builder.buildResource(request);
+                                    protonConnection.setContext(builder);
+                                } else {
+                                    request.onSuccess();
+                                }
+                            }
+
+                            pumpToProtonTransport(request);
+                        } catch (Exception e) {
+                            LOG.debug("Caught exception while closing proton connection: {}", e.getMessage());
+                        } finally {
+                            if (nextIdleTimeoutCheck != null) {
+                                LOG.trace("Cancelling scheduled IdleTimeoutCheck");
+                                nextIdleTimeoutCheck.cancel(false);
+                                nextIdleTimeoutCheck = null;
+                            }
                         }
-
-                        // Connection attempt might have been tried and failed so only perform
-                        // an open / close cycle if one hasn't been done already.
-                        if (protonConnection.getLocalState() == EndpointState.UNINITIALIZED) {
-                            AmqpClosedConnectionBuilder builder = new AmqpClosedConnectionBuilder(getProvider(), connectionInfo);
-                            builder.buildResource(request);
-
-                            protonConnection.setContext(builder);
-                        } else {
-                            request.onSuccess();
-                        }
-                    }
-
-                    pumpToProtonTransport(request);
-                } catch (Exception e) {
-                    LOG.debug("Caught exception while closing proton connection: {}", e.getMessage());
-                } finally {
-                    if (nextIdleTimeoutCheck != null) {
-                        LOG.trace("Cancelling scheduled IdleTimeoutCheck");
-                        nextIdleTimeoutCheck.cancel(false);
-                        nextIdleTimeoutCheck = null;
-                    }
+                    });
+                } catch (RejectedExecutionException rje) {
+                    // Transport likely encountered some critical error on connect and the executor
+                    // resource is not initialized now, in which case just ignore and continue on.
+                    LOG.trace("Close of provider resources was rejected from Transport IO thread: ", rje);
+                    request.onSuccess();
                 }
-            });
+            } else {
+                request.onSuccess();
+            }
 
             try {
                 if (getCloseTimeout() < 0) {
@@ -360,16 +378,12 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
             } catch (IOException e) {
                 LOG.warn("Error caught while closing Provider: {}", e.getMessage() != null ? e.getMessage() : "<Unknown Error>");
             } finally {
-                try {
-                    if (transport != null) {
-                        try {
-                            transport.close();
-                        } catch (Exception e) {
-                            LOG.debug("Caught exception while closing down Transport: {}", e.getMessage());
-                        }
+                if (transport != null) {
+                    try {
+                        transport.close();
+                    } catch (Exception e) {
+                        LOG.debug("Caught exception while closing down Transport: {}", e.getMessage());
                     }
-                } finally {
-                    ThreadPoolUtils.shutdownGraceful(serializer);
                 }
             }
         }

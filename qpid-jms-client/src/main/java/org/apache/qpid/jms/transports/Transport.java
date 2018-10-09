@@ -35,6 +35,10 @@ public interface Transport {
      * Performs the connect operation for the implemented Transport type
      * such as a TCP socket connection, SSL/TLS handshake etc.
      *
+     * @param initRoutine
+     * 			a runnable initialization method that is executed in the context
+     *          of the transport's IO thread to allow thread safe setup of resources
+     *          that will be run from the transport executor service.
      * @param sslContextOverride
      *          a user-provided SSLContext to use if establishing a secure
      *          connection, overrides applicable URI configuration
@@ -43,7 +47,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs while attempting the connect.
      */
-    ScheduledExecutorService connect(SSLContext sslContextOverride) throws IOException;
+    ScheduledExecutorService connect(Runnable initRoutine, SSLContext sslContextOverride) throws IOException;
 
     /**
      * @return true if transport is connected or false if the connection is down.
@@ -134,7 +138,7 @@ public interface Transport {
      * @param factory
      * 		The {@link ThreadFactory}
      *
-     * @throws IllegalStateException if called after a call to {@link #connect(SSLContext)}
+     * @throws IllegalStateException if called after a call to {@link #connect(Runnable, SSLContext)}
      */
     void setThreadFactory(ThreadFactory factory);
 
