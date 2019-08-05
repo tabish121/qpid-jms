@@ -20,6 +20,9 @@
  */
 package org.apache.qpid.jms.example;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.DeliveryMode;
@@ -28,14 +31,45 @@ import javax.jms.ExceptionListener;
 import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
+import javax.jms.MessageListener;
 import javax.jms.MessageProducer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.naming.Context;
 import javax.naming.InitialContext;
 
+import io.jaegertracing.Configuration;
+import io.jaegertracing.Configuration.ReporterConfiguration;
+import io.jaegertracing.Configuration.SamplerConfiguration;
+import io.opentracing.Tracer;
+import io.opentracing.util.GlobalTracer;
+
 public class HelloWorld {
+
+    private static boolean REGISTER_GLOBAL = false;
+
     public static void main(String[] args) throws Exception {
+
+        if (REGISTER_GLOBAL) {
+            String  serviceName = "some-global-serviceName";
+
+            Configuration configuration = Configuration.fromEnv(serviceName);
+
+            SamplerConfiguration samplerConfig = SamplerConfiguration.fromEnv();//TODO: delete
+            samplerConfig.withType("const");//TODO: delete
+            samplerConfig.withParam(1);//TODO: delete
+
+            ReporterConfiguration reporterConfig = ReporterConfiguration.fromEnv();//TODO: delete?
+            reporterConfig.withLogSpans(true);//TODO: delete?
+
+            configuration.withReporter(reporterConfig);//TODO: delete
+            configuration.withSampler(samplerConfig);//TODO: delete
+
+            Tracer tracer = configuration.getTracer();
+
+            GlobalTracer.registerIfAbsent(tracer);
+        }
+
         try {
             // The configuration for the Qpid InitialContextFactory has been supplied in
             // a jndi.properties file in the classpath, which results in it being picked
@@ -56,12 +90,39 @@ public class HelloWorld {
 
             TextMessage message = session.createTextMessage("Hello world!");
             messageProducer.send(message, DeliveryMode.NON_PERSISTENT, Message.DEFAULT_PRIORITY, Message.DEFAULT_TIME_TO_LIVE);
-            TextMessage receivedMessage = (TextMessage) messageConsumer.receive(2000L);
 
-            if (receivedMessage != null) {
-                System.out.println(receivedMessage.getText());
+            boolean onMessage = true;
+            if(onMessage) {
+                CountDownLatch latch = new CountDownLatch(1);
+                messageConsumer.setMessageListener(new MessageListener() {
+
+                    @Override
+                    public void onMessage(Message message) {
+                        try {
+                            Thread.sleep(400);
+                            //Map<?,?> body = message.getBody(Map.class);
+                            String body = message.getBody(String.class);
+                            System.out.println(body);
+                        } catch (Exception e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
+                        } finally {
+                            latch.countDown();
+                        }
+                    }
+                });
+
+                if(!latch.await(5000, TimeUnit.MILLISECONDS)) {
+                    System.out.println("No message received within the given timeout!");
+                }
             } else {
-                System.out.println("No message received within the given timeout!");
+                TextMessage receivedMessage = (TextMessage) messageConsumer.receive(2000L);
+
+                if (receivedMessage != null) {
+                    System.out.println(receivedMessage.getText());
+                } else {
+                    System.out.println("No message received within the given timeout!");
+                }
             }
 
             connection.close();
@@ -70,6 +131,7 @@ public class HelloWorld {
             exp.printStackTrace(System.out);
             System.exit(1);
         }
+
     }
 
     private static class MyExceptionListener implements ExceptionListener {

@@ -38,6 +38,12 @@
       <artifactId>qpid-jms-client</artifactId>
     </dependency>
 
+    <dependency>
+      <groupId>org.apache.qpid</groupId>
+      <artifactId>qpid-jms-tracing</artifactId>
+      <version>${project.version}</version> <!-- TODO: dep management? lose it entirely? -->
+    </dependency>
+
     <!-- Provide a logging implementation to avoid
          notice from SLF4J that none was found -->
     <dependency>

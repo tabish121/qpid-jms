@@ -480,6 +480,10 @@ public class JmsMessage implements javax.jms.Message {
         facade.onDispatch();
     }
 
+    public void onDelivery() throws JMSException {
+        facade.onDelivery();
+    }
+
     public JmsConnection getConnection() {
         return connection;
     }

@@ -52,6 +52,9 @@ import org.apache.qpid.jms.policy.JmsPresettlePolicy;
 import org.apache.qpid.jms.policy.JmsRedeliveryPolicy;
 import org.apache.qpid.jms.provider.Provider;
 import org.apache.qpid.jms.provider.ProviderFactory;
+import org.apache.qpid.jms.tracing.JmsNoOpTracer;
+import org.apache.qpid.jms.tracing.JmsTracer;
+import org.apache.qpid.jms.tracing.JmsTracerFactory;
 import org.apache.qpid.jms.util.IdGenerator;
 import org.apache.qpid.jms.util.PropertyUtil;
 import org.apache.qpid.jms.util.URISupport;
@@ -109,6 +112,8 @@ public class JmsConnectionFactory extends JNDIStorable implements ConnectionFact
     private JmsPresettlePolicy presettlePolicy = new JmsDefaultPresettlePolicy();
     private JmsMessageIDPolicy messageIDPolicy = new JmsDefaultMessageIDPolicy();
     private JmsDeserializationPolicy deserializationPolicy = new JmsDefaultDeserializationPolicy();
+
+    private String tracingType;
 
     public JmsConnectionFactory() {
     }
@@ -268,6 +273,22 @@ public class JmsConnectionFactory extends JNDIStorable implements ConnectionFact
             connectionInfo.setRedeliveryPolicy(redeliveryPolicy.copy());
             connectionInfo.setDeserializationPolicy(deserializationPolicy.copy());
             connectionInfo.getExtensionMap().putAll(extensionMap);
+
+            // TODO: have some 'enable tracing' flag to avoid overhead when not desired.
+            // TODO: configurable name or not?
+            // String factoryName = "opentracing";
+            // TODO: consider how the tracer is created and if we want to allow one configured
+            //       on the factory proper.  Also how the naming of uri options is defined for
+            //       the polciy,  If we have a tracer inf the factory, is it higher precedence
+            //       than the URI named tracing type?  something like this URI option scheme:
+            //
+            //          jms.tracer=opentracing&jms.tracer.ignoreGlobalTracer=false
+
+            JmsTracer tracer = JmsNoOpTracer.INSTANCE;
+            if (tracingType != null) {
+                tracer = JmsTracerFactory.create(remoteURI, tracingType);
+            }
+            connectionInfo.setTracer(tracer);
 
             // Set properties to make additional configuration changes
             PropertyUtil.setProperties(connectionInfo, properties);
@@ -916,7 +937,6 @@ public class JmsConnectionFactory extends JNDIStorable implements ConnectionFact
         this.useDaemonThread = useDaemonThread;
     }
 
-
     /**
      * @return whether links that fail to be created during failover reconnect are closed or not.
      */
@@ -963,6 +983,16 @@ public class JmsConnectionFactory extends JNDIStorable implements ConnectionFact
         } else {
             extensionMap.put(extensionKey, extension);
         }
+    }
+
+    // TODO - decide on configuration naming and add docs
+
+    public String getTracingType() {
+        return tracingType;
+    }
+
+    public void setTracingType(String tracingType) {
+        this.tracingType = tracingType;
     }
 
     //----- Static Methods ---------------------------------------------------//

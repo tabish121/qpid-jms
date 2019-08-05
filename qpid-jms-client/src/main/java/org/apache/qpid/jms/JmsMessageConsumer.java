@@ -35,6 +35,7 @@ import org.apache.qpid.jms.exceptions.JmsConnectionFailedException;
 import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.message.JmsMessage;
+import org.apache.qpid.jms.message.facade.JmsMessageFacade;
 import org.apache.qpid.jms.meta.JmsConsumerId;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
 import org.apache.qpid.jms.meta.JmsResource.ResourceState;
@@ -46,6 +47,8 @@ import org.apache.qpid.jms.provider.ProviderConstants.ACK_TYPE;
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.ProviderFuture;
 import org.apache.qpid.jms.provider.ProviderSynchronization;
+import org.apache.qpid.jms.tracing.JmsTracer;
+import org.apache.qpid.jms.tracing.JmsTracer.DeliveryOutcome;
 import org.apache.qpid.jms.util.FifoMessageQueue;
 import org.apache.qpid.jms.util.MessageQueue;
 import org.apache.qpid.jms.util.PriorityMessageQueue;
@@ -71,6 +74,7 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
     protected final Lock dispatchLock = new ReentrantLock();
     protected final AtomicReference<Throwable> failureCause = new AtomicReference<>();
     protected final MessageDeliverTask deliveryTask = new MessageDeliverTask();
+    protected final JmsTracer tracer;
 
     protected JmsMessageConsumer(JmsConsumerId consumerId, JmsSession session, JmsDestination destination,
                                  String selector, boolean noLocal) throws JMSException {
@@ -81,6 +85,7 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
                                  String name, String selector, boolean noLocal) throws JMSException {
         this.session = session;
         this.connection = session.getConnection();
+        this.tracer = connection.getTracer();
         this.acknowledgementMode = isBrowser() ? Session.AUTO_ACKNOWLEDGE : session.acknowledgementMode();
 
         if (destination.isTemporary()) {
@@ -330,9 +335,20 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
                             // closed until future pulls were performed.
                         }
                     }
-                } else if (consumeExpiredMessage(envelope)) {
+
+                    continue;
+                }
+
+                JmsMessageFacade facade = envelope.getMessage().getFacade();
+                facade.onDelivery();
+
+                if (consumeExpiredMessage(envelope)) {
                     LOG.trace("{} filtered expired message: {}", getConsumerId(), envelope);
                     doAckExpired(envelope);
+                    // TODO: trace expiration policy being applied?
+                    if (tracer.isTracing()) {
+                        tracer.syncReceive(facade, JmsTracer.DeliveryOutcome.EXPIRED);
+                    }
                     if (timeout > 0) {
                         timeout = Math.max(deadline - System.currentTimeMillis(), 0);
                     }
@@ -340,6 +356,10 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
                 } else if (session.redeliveryExceeded(envelope)) {
                     LOG.debug("{} filtered message with excessive redelivery count: {}", getConsumerId(), envelope);
                     applyRedeliveryPolicyOutcome(envelope);
+                    // TODO: trace redelivery policy being applied?
+                    if (tracer.isTracing()) {
+                        tracer.syncReceive(facade, JmsTracer.DeliveryOutcome.REDELIVERIES_EXCEEDED);
+                    }
                     if (timeout > 0) {
                         timeout = Math.max(deadline - System.currentTimeMillis(), 0);
                     }
@@ -348,6 +368,12 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
                     if (LOG.isTraceEnabled()) {
                         LOG.trace(getConsumerId() + " received message: " + envelope);
                     }
+
+                    // TODO - Add call context, EXPIRED, REDELIVERIES_EXCEEDED, DELIVERED
+                    if (tracer.isTracing()) {
+                        tracer.syncReceive(facade, JmsTracer.DeliveryOutcome.DELIVERED);
+                    }
+
                     return envelope;
                 }
             }
@@ -725,15 +751,28 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
                     return false;
                 }
 
-                JmsMessage copy = null;
+                JmsMessageFacade facade = envelope.getMessage().getFacade();
+                facade.onDelivery();
 
                 if (consumeExpiredMessage(envelope)) {
                     LOG.trace("{} filtered expired message: {}", getConsumerId(), envelope);
                     doAckExpired(envelope);
+                    //TODO: trace expiration being applied?
+                    if (tracer.isTracing()) {
+                        tracer.asyncDeliveryInit(facade);
+                        tracer.asyncDeliveryComplete(facade, DeliveryOutcome.EXPIRED);
+                    }
                 } else if (session.redeliveryExceeded(envelope)) {
                     LOG.trace("{} filtered message with excessive redelivery count: {}", getConsumerId(), envelope);
                     applyRedeliveryPolicyOutcome(envelope);
+                    //TODO: trace redelivery policy being applied?
+                    if (tracer.isTracing()) {
+                        tracer.asyncDeliveryInit(facade);
+                        tracer.asyncDeliveryComplete(facade, DeliveryOutcome.REDELIVERIES_EXCEEDED);
+                    }
                 } else {
+                    final JmsMessage copy;
+
                     boolean deliveryFailed = false;
                     boolean autoAckOrDupsOk = acknowledgementMode == Session.AUTO_ACKNOWLEDGE ||
                                               acknowledgementMode == Session.DUPS_OK_ACKNOWLEDGE;
@@ -745,9 +784,17 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
                     session.clearSessionRecovered();
 
                     try {
+                        if (tracer.isTracing()) {
+                            tracer.asyncDeliveryInit(facade);
+                        }
+
                         messageListener.onMessage(copy);
                     } catch (RuntimeException rte) {
                         deliveryFailed = true;
+                    } finally {
+                        if (tracer.isTracing()) {
+                            tracer.asyncDeliveryComplete(facade, deliveryFailed ? DeliveryOutcome.USER_ERROR : DeliveryOutcome.DELIVERED);
+                        }
                     }
 
                     if (autoAckOrDupsOk && !session.isSessionRecovered()) {
