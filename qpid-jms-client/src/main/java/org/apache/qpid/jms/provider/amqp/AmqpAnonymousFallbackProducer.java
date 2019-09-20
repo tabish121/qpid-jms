@@ -17,6 +17,7 @@
 package org.apache.qpid.jms.provider.amqp;
 
 import java.util.Map;
+import java.util.concurrent.ScheduledFuture;
 
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.message.JmsOutboundMessageDispatch;
@@ -43,6 +44,7 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
     private static final Logger LOG = LoggerFactory.getLogger(AmqpAnonymousFallbackProducer.class);
     private static final IdGenerator producerIdGenerator = new IdGenerator();
 
+    private final AmqpConnection connection;
     private final AnonymousProducerCache producerCache;
     private final String producerIdKey = producerIdGenerator.generateId();
     private long producerIdCount;
@@ -58,23 +60,15 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
     public AmqpAnonymousFallbackProducer(AmqpSession session, JmsProducerInfo info) {
         super(session, info);
 
-        if (connection.isAnonymousProducerCache()) {
-            producerCache = new AnonymousProducerCache(10);
-            producerCache.setMaxCacheSize(connection.getAnonymousProducerCacheSize());
-        } else {
-            producerCache = null;
-        }
+        this.connection = session.getConnection();
+        this.producerCache = new AnonymousProducerCache(connection.getAnonymousProducerCacheSize());
     }
 
     @Override
     public void send(JmsOutboundMessageDispatch envelope, AsyncResult request) throws ProviderException {
         LOG.trace("Started send chain for anonymous producer: {}", getProducerId());
 
-        AmqpProducer producer = null;
-        if (connection.isAnonymousProducerCache()) {
-            producer = producerCache.get(envelope.getDestination());
-        }
-
+        ProducerTracker producer = producerCache.get(envelope.getDestination());
         if (producer == null) {
             // Create a new ProducerInfo for the short lived producer that's created to perform the
             // send to the given AMQP target.
@@ -84,30 +78,19 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
 
             // We open a Fixed Producer instance with the target destination.  Once it opens
             // it will trigger the open event which will in turn trigger the send event.
-            // If caching is disabled the created producer will be closed immediately after
-            // the entire send chain has finished and the delivery has been acknowledged.
             AmqpProducerBuilder builder = new AmqpProducerBuilder(session, info);
             builder.buildResource(new AnonymousSendRequest(request, builder, envelope));
 
-            if (connection.isAnonymousProducerCache()) {
-                // Cache it in hopes of not needing to create large numbers of producers.
-                producerCache.put(envelope.getDestination(), builder.getResource());
-            }
-
             getParent().getProvider().pumpToProtonTransport(request);
         } else {
-            producer.send(envelope, request);
+            producer.cancelPendingClose().send(envelope, request);
         }
     }
 
     @Override
     public void close(AsyncResult request) {
-        // Trigger an immediate close, the internal producers that are currently in the cache
-        // if the cache is enabled.
-        if (connection.isAnonymousProducerCache()) {
-            for (AmqpProducer producer : producerCache.values()) {
-                producer.close(new CloseRequest(producer));
-            }
+        for (ProducerTracker producer : producerCache.values()) {
+            producer.close();
         }
 
         request.onSuccess();
@@ -149,40 +132,37 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
         @Override
         public void onSuccess() {
             LOG.trace("Open phase of anonymous send complete: {} ", getProducerId());
+
+            // The fixed producer opened so we start tracking it and once send returns indicating that
+            // it handled the request (not necessarily sent it but knows it exists) then we start the
+            // close clock and if not reused again this producer will eventually time itself out of
+            // existence.
+            final ProducerTracker producer = new ProducerTracker(producerCache, producerBuilder.getResource());
+            producerCache.put(envelope.getDestination(), producer);
+
             try {
-                getProducer().send(envelope, getWrappedRequest());
+                producer.send(envelope, getWrappedRequest());
             } catch (ProviderException e) {
                 super.onFailure(e);
             } finally {
-                if (!connection.isAnonymousProducerCache()) {
-                    LOG.trace("Staging close of anonymous fallback producer after send: {} ", getProducerId());
-                    CloseRequest close = new CloseRequest(getProducer());
-                    getProducer().close(close);
-                }
+                LOG.trace("Staging close of anonymous fallback producer after send: {} ", getProducerId());
+                producer.scheduleClose(connection);
             }
         }
 
-        /**
-         * In all cases of the chain of events that make up the send for an anonymous
-         * producer a failure will trigger the original send request to fail.
-         */
         @Override
         public void onFailure(ProviderException result) {
-            LOG.debug("Send failed during {} step in chain: {}", this.getClass().getName(), getProducerId());
-            if (!connection.isAnonymousProducerCache()) {
-                LOG.trace("Staging close of anonymous fallback producer after send failure: {} ", getProducerId());
-                CloseRequest close = new CloseRequest(getProducer());
-                getProducer().close(close);
-            }
-            super.onFailure(result);
-        }
+            LOG.debug("Send failed producer create step in chain: {}", getProducerId());
 
-        public AmqpProducer getProducer() {
-            return producerBuilder.getResource();
+            // Producer open failed so it was never in the cache, just close it now to ensure
+            // that everything is cleaned up.
+            CloseRequest close = new CloseRequest(producerBuilder.getResource());
+            producerBuilder.getResource().close(close);
+            super.onFailure(result);
         }
     }
 
-    private final class CloseRequest implements AsyncResult {
+    private static final class CloseRequest implements AsyncResult {
 
         private final AmqpProducer producer;
 
@@ -192,7 +172,7 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
 
         @Override
         public void onFailure(ProviderException result) {
-            AmqpAnonymousFallbackProducer.this.connection.getProvider().fireProviderException(result);
+            producer.getParent().getProvider().fireProviderException(result);
         }
 
         @Override
@@ -206,7 +186,50 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
         }
     }
 
-    private final class AnonymousProducerCache extends LRUCache<JmsDestination, AmqpProducer> {
+    private static final class ProducerTracker {
+
+        private final AnonymousProducerCache cache;
+        private final AmqpProducer producer;
+        private ScheduledFuture<AmqpFixedProducer> closeFuture;
+
+        public ProducerTracker(AnonymousProducerCache cache, AmqpProducer producer) {
+            this.cache = cache;
+            this.producer = producer;
+        }
+
+        public ProducerTracker scheduleClose(AmqpConnection connection) {
+            connection.schedule(() -> close(), connection.getAnonymousProducerCacheTimeout());
+            return this;
+        }
+
+        public ProducerTracker send(JmsOutboundMessageDispatch envelope, AsyncResult request) throws ProviderException {
+            producer.send(envelope, request);
+            return this;
+        }
+
+        public ProducerTracker cancelPendingClose() {
+            if (closeFuture != null) {
+                closeFuture.cancel(false);
+                closeFuture = null;
+            }
+
+            return this;
+        }
+
+        public ProducerTracker removeFromCache() {
+            cache.remove(producer.getResourceInfo().getDestination());
+            return this;
+        }
+
+        public void close() {
+            removeFromCache();
+            cancelPendingClose();
+            producer.close(new CloseRequest(producer));
+            producer.getParent().getProvider().pumpToProtonTransport();
+        }
+    }
+
+    private final class AnonymousProducerCache extends LRUCache<JmsDestination, ProducerTracker> {
 
         private static final long serialVersionUID = 1L;
 
@@ -215,9 +238,12 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
         }
 
         @Override
-        protected void onCacheEviction(Map.Entry<JmsDestination, AmqpProducer> cached) {
+        protected void onCacheEviction(Map.Entry<JmsDestination, ProducerTracker> cached) {
             LOG.trace("Producer: {} evicted from producer cache", cached.getValue());
-            cached.getValue().close(new CloseRequest(cached.getValue()));
+
+            // Evicted from the cache means to much churn so don't wait any longer, just
+            // close the cached producer now and another will take its place when needed.
+            cached.getValue().close();
         }
     }
 }

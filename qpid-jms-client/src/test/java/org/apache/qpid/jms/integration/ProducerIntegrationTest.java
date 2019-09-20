@@ -2832,9 +2832,11 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
                 fail("Send should fail");
             }
 
+            // TODO - Configurable times on anonymous producer close to shorten test waits
+
             // Detach for first sender can arrive after attach due to delay in response to the disposition
             // and the send now being asynchronous.
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForAllHandlersToComplete(10000);
 
             assertTrue("Did not get failed send exception from connection", connectionErrorLatch.await(5, TimeUnit.SECONDS));
 
@@ -2846,7 +2848,7 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
             producer.send(dest, message);
 
             // Ensure we get a detach from the anonymous producer
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForAllHandlersToComplete(10000);
 
             testPeer.expectClose();
             connection.close();

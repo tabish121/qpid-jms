@@ -44,6 +44,9 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpConnection.class);
 
+    private static final int ANONYMOUS_PRODUCER_CLOSE_DELAY = 100;  // TODO - Move to connection properties configuration;
+    private static final int ANONYMOUS_PRODUCER_CACHE_SIZE = 10;  // TODO - Move to connection properties configuration;
+
     private AmqpSubscriptionTracker subTracker = new AmqpSubscriptionTracker();
 
     private final AmqpJmsMessageFactory amqpMessageFactory;
@@ -56,8 +59,8 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
     private AmqpConnectionSession connectionSession;
 
     private boolean objectMessageUsesAmqpTypes = false;
-    private boolean anonymousProducerCache = false;
-    private int anonymousProducerCacheSize = 10;
+    private int anonymousProducerCacheSize = ANONYMOUS_PRODUCER_CACHE_SIZE;
+    private int anonymousProducerCacheTimeout = ANONYMOUS_PRODUCER_CLOSE_DELAY;
 
     public AmqpConnection(AmqpProvider provider, JmsConnectionInfo info, Connection protonConnection) {
         super(info, protonConnection, provider);
@@ -202,18 +205,21 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
     }
 
     /**
-     * @return true if anonymous producers should be cached or closed on send complete.
+     * @return the number of milliseconds before a cached anonymous producer is closed.
      */
-    public boolean isAnonymousProducerCache() {
-        return anonymousProducerCache;
+    public int getAnonymousProducerCacheTimeout() {
+        return anonymousProducerCacheTimeout;
     }
 
     /**
-     * @param anonymousProducerCache
-     *        enable or disables the caching or anonymous producers.
+     * Sets the number of milliseconds that an anonymous fallback producer is held in the
+     * cache before it times out and is closed and removed from the cache.
+     *
+     * @param timeout
+     * 		time in milliseconds before cache producer is automatically closed.
      */
-    public void setAnonymousProducerCache(boolean anonymousProducerCache) {
-        this.anonymousProducerCache = anonymousProducerCache;
+    public void setAnonymousProducerCacheTimeout(int timeout) {
+        this.anonymousProducerCacheTimeout = timeout;
     }
 
     /**
