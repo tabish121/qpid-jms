@@ -70,11 +70,6 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
     public void send(JmsOutboundMessageDispatch envelope, AsyncResult request) throws ProviderException {
         LOG.trace("Started send chain for anonymous producer: {}", getProducerId());
 
-        // Force sends marked as asynchronous to be sent synchronous so that the temporary
-        // producer instance can handle failures and perform necessary completion work on
-        // the send.
-        envelope.setSendAsync(false);
-
         AmqpProducer producer = null;
         if (connection.isAnonymousProducerCache()) {
             producer = producerCache.get(envelope.getDestination());
@@ -139,13 +134,32 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
 
     //----- AsyncResult objects used to complete the sends -------------------//
 
-    private abstract class AnonymousRequest extends WrappedAsyncResult {
+    private final class AnonymousSendRequest extends WrappedAsyncResult {
 
-        protected final JmsOutboundMessageDispatch envelope;
+        private final JmsOutboundMessageDispatch envelope;
+        private final AmqpProducerBuilder producerBuilder;
 
-        public AnonymousRequest(AsyncResult sendResult, JmsOutboundMessageDispatch envelope) {
+        public AnonymousSendRequest(AsyncResult sendResult, AmqpProducerBuilder producerBuilder, JmsOutboundMessageDispatch envelope) {
             super(sendResult);
+
             this.envelope = envelope;
+            this.producerBuilder = producerBuilder;
+        }
+
+        @Override
+        public void onSuccess() {
+            LOG.trace("Open phase of anonymous send complete: {} ", getProducerId());
+            try {
+                getProducer().send(envelope, getWrappedRequest());
+            } catch (ProviderException e) {
+                super.onFailure(e);
+            } finally {
+                if (!connection.isAnonymousProducerCache()) {
+                    LOG.trace("Staging close of anonymous fallback producer after send: {} ", getProducerId());
+                    CloseRequest close = new CloseRequest(getProducer());
+                    getProducer().close(close);
+                }
+            }
         }
 
         /**
@@ -155,95 +169,16 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
         @Override
         public void onFailure(ProviderException result) {
             LOG.debug("Send failed during {} step in chain: {}", this.getClass().getName(), getProducerId());
+            if (!connection.isAnonymousProducerCache()) {
+                LOG.trace("Staging close of anonymous fallback producer after send failure: {} ", getProducerId());
+                CloseRequest close = new CloseRequest(getProducer());
+                getProducer().close(close);
+            }
             super.onFailure(result);
         }
 
-        public abstract AmqpProducer getProducer();
-    }
-
-    private final class AnonymousSendRequest extends AnonymousRequest {
-
-        private final AmqpProducerBuilder producerBuilder;
-
-        public AnonymousSendRequest(AsyncResult sendResult, AmqpProducerBuilder producerBuilder, JmsOutboundMessageDispatch envelope) {
-            super(sendResult, envelope);
-
-            this.producerBuilder = producerBuilder;
-        }
-
-        @Override
-        public void onSuccess() {
-            LOG.trace("Open phase of anonymous send complete: {} ", getProducerId());
-            AnonymousSendCompleteRequest send = new AnonymousSendCompleteRequest(this);
-            try {
-                getProducer().send(envelope, send);
-            } catch (ProviderException e) {
-                super.onFailure(e);
-            }
-        }
-
-        @Override
         public AmqpProducer getProducer() {
             return producerBuilder.getResource();
-        }
-    }
-
-    private final class AnonymousSendCompleteRequest extends AnonymousRequest {
-
-        private final AmqpProducer producer;
-
-        public AnonymousSendCompleteRequest(AnonymousSendRequest open) {
-            super(open.getWrappedRequest(), open.envelope);
-
-            this.producer = open.getProducer();
-        }
-
-        @Override
-        public void onFailure(ProviderException result) {
-            LOG.trace("Send phase of anonymous send failed: {} ", getProducerId());
-            if (!connection.isAnonymousProducerCache()) {
-                AnonymousCloseRequest close = new AnonymousCloseRequest(this);
-                producer.close(close);
-            }
-            super.onFailure(result);
-        }
-
-        @Override
-        public void onSuccess() {
-            LOG.trace("Send phase of anonymous send complete: {} ", getProducerId());
-            if (!connection.isAnonymousProducerCache()) {
-                AnonymousCloseRequest close = new AnonymousCloseRequest(this);
-                producer.close(close);
-            } else {
-                super.onSuccess();
-            }
-        }
-
-        @Override
-        public AmqpProducer getProducer() {
-            return producer;
-        }
-    }
-
-    private final class AnonymousCloseRequest extends AnonymousRequest {
-
-        private final AmqpProducer producer;
-
-        public AnonymousCloseRequest(AnonymousSendCompleteRequest sendComplete) {
-            super(sendComplete.getWrappedRequest(), sendComplete.envelope);
-
-            this.producer = sendComplete.getProducer();
-        }
-
-        @Override
-        public void onSuccess() {
-            LOG.trace("Close phase of anonymous send complete: {} ", getProducerId());
-            super.onSuccess();
-        }
-
-        @Override
-        public AmqpProducer getProducer() {
-            return producer;
         }
     }
 

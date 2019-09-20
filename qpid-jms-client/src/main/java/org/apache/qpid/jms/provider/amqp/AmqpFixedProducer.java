@@ -80,6 +80,7 @@ public class AmqpFixedProducer extends AmqpProducer {
     public void close(AsyncResult request) {
         // If any sends are held we need to wait for them to complete.
         if (!blocked.isEmpty() || !sent.isEmpty()) {
+            LOG.trace("Close of producer {} held until blocked and inflight messages are complete");
             this.closeRequest = request;
             return;
         }
