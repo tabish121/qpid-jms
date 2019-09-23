@@ -1541,12 +1541,20 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             Message message = session.createMessage();
             producer.send(dest, message);
 
+            // TODO - Delayed close due to caching will cause next send to fail expectation since detach didn't arrive
+            //        configure long enough close delay to be CI safe and remove expectation of detach  or configure
+            //        short one to make this wait quick
+            testPeer.waitForAllHandlersToComplete(1000);
+
             // Repeat the send and observe another attach->transfer->detach.
             testPeer.expectSenderAttach(targetMatcher, false, false);
             testPeer.expectTransfer(messageMatcher);
             testPeer.expectDetach(true, true, true);
 
             producer.send(dest, message);
+
+            // TODO - Delayed close due to caching will cause close of session to beat close of producer
+            testPeer.waitForAllHandlersToComplete(1000);
 
             testPeer.expectClose();
             connection.close();

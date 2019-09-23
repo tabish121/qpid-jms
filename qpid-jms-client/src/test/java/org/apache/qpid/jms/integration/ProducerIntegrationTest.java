@@ -2763,82 +2763,9 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
                 LOG.debug("Caught expected error from failed send.");
             }
 
-            //Repeat the send and observe another attach->transfer->detach.
-            testPeer.expectSenderAttach(targetMatcher, false, false);
-            testPeer.expectTransfer(messageMatcher);
-            testPeer.expectDetach(true, true, true);
-
-            producer.send(dest, message);
-
-            testPeer.expectClose();
-            connection.close();
-
+            // TODO - Delayed close can be skipped if delay is long enough as the next send can beat it
+            //        we should configure the test such that it behaves as expected and test it explicitly.
             testPeer.waitForAllHandlersToComplete(1000);
-        }
-    }
-
-    @Repeat(repetitions = 1)
-    @Test(timeout = 20000)
-    public void testAnonymousProducerAsyncSendFailureHandledWhenAnonymousRelayNodeIsNotSupported() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-
-            // DO NOT add capability to indicate server support for ANONYMOUS-RELAY
-
-            final CountDownLatch connectionErrorLatch = new CountDownLatch(1);
-            Connection connection = testFixture.establishConnecton(testPeer, "?jms.forceAsyncSend=true");
-            connection.setExceptionListener((error) -> {
-                connectionErrorLatch.countDown();
-            });
-
-            connection.start();
-
-            testPeer.expectBegin();
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
-            String topicName = "myTopic";
-            Topic dest = session.createTopic(topicName);
-
-            // Expect no AMQP traffic when we create the anonymous producer, as it will wait
-            // for an actual send to occur on the producer before anything occurs on the wire
-            // at which point a new producer will be created for the send and then closed after
-            // the send has been remotely settled.
-
-            MessageProducer producer = session.createProducer(null);
-            assertNotNull("Producer object was null", producer);
-
-            // Expect a new message sent by the above producer to cause creation of a new
-            // sender link to the given destination, then closing the link after the message is sent.
-            TargetMatcher targetMatcher = new TargetMatcher();
-            targetMatcher.withAddress(equalTo(topicName));
-            targetMatcher.withDynamic(equalTo(false));
-            targetMatcher.withDurable(equalTo(TerminusDurability.NONE));
-
-            MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true);
-            MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
-            messageMatcher.setHeadersMatcher(headersMatcher);
-            messageMatcher.setMessageAnnotationsMatcher(msgAnnotationsMatcher);
-
-            testPeer.expectSenderAttach(targetMatcher, false, false);
-            testPeer.expectTransfer(messageMatcher, nullValue(), new Rejected(), true);
-            testPeer.expectDetach(true, true, true);
-
-            // Producer should act as asynchronous regardless of anonymous relay not supported.
-            Message message = session.createMessage();
-            try {
-                producer.send(dest, message);
-            } catch (JMSException jmsEx) {
-                LOG.debug("Caught expected error from failed send.");
-                fail("Send should fail");
-            }
-
-            // TODO - Configurable times on anonymous producer close to shorten test waits
-
-            // Detach for first sender can arrive after attach due to delay in response to the disposition
-            // and the send now being asynchronous.
-            testPeer.waitForAllHandlersToComplete(10000);
-
-            assertTrue("Did not get failed send exception from connection", connectionErrorLatch.await(5, TimeUnit.SECONDS));
 
             // Repeat the send and observe another attach->transfer->detach.
             testPeer.expectSenderAttach(targetMatcher, false, false);
@@ -2847,8 +2774,8 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
 
             producer.send(dest, message);
 
-            // Ensure we get a detach from the anonymous producer
-            testPeer.waitForAllHandlersToComplete(10000);
+            // TODO - Delayed close can be skipped if delay is long enough as the next close can beat it
+            testPeer.waitForAllHandlersToComplete(1000);
 
             testPeer.expectClose();
             connection.close();
@@ -2907,6 +2834,9 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
             assertNotNull(completionListener.message);
             assertTrue(completionListener.message instanceof TextMessage);
 
+            // TODO - next send happens before detach leading to expectation failure
+            testPeer.waitForAllHandlersToComplete(1000);
+
             // Repeat the send and observe another attach->transfer->detach.
             testPeer.expectSenderAttach(targetMatcher, false, false);
             testPeer.expectTransfer(messageMatcher);
@@ -2915,12 +2845,189 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
             TestJmsCompletionListener completionListener2 = new TestJmsCompletionListener();
 
             producer.send(dest, message, completionListener2);
+
+            // TODO - Delay of detach will cause next close to beat the delayed close leading to expectation failure
+            testPeer.waitForAllHandlersToComplete(1000);
+
             producer.close();
 
             assertTrue("Did not get completion callback", completionListener2.awaitCompletion(5, TimeUnit.SECONDS));
             assertNull(completionListener2.exception);
             assertNotNull(completionListener2.message);
             assertTrue(completionListener2.message instanceof TextMessage);
+
+            // TODO - Delayed close can be skipped if delay is long enough as the next close can beat it
+            testPeer.waitForAllHandlersToComplete(1000);
+
+            testPeer.expectClose();
+            connection.close();
+
+            testPeer.waitForAllHandlersToComplete(1000);
+        }
+    }
+
+    //TODO: complete
+    @Test(timeout = 20000)
+    public void testAnonymousProducerAsyncCompletionListenerSendFailureHandledWhenAnonymousRelayNodeIsNotSupported() throws Exception {
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+
+            // DO NOT add capability to indicate server support for ANONYMOUS-RELAY
+
+            Connection connection = testFixture.establishConnecton(testPeer);
+
+            connection.start();
+
+            testPeer.expectBegin();
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+            String topicName = "myTopic";
+            Topic dest = session.createTopic(topicName);
+
+            // Expect no AMQP traffic when we create the anonymous producer, as it will wait
+            // for an actual send to occur on the producer before anything occurs on the wire
+
+            //Create an anonymous producer
+            MessageProducer producer = session.createProducer(null);
+            assertNotNull("Producer object was null", producer);
+
+            // Expect a new message sent by the above producer to cause creation of a new
+            // sender link to the given destination, then closing the link after the message is sent.
+            TargetMatcher targetMatcher = new TargetMatcher();
+            targetMatcher.withAddress(equalTo(topicName));
+            targetMatcher.withDynamic(equalTo(false));
+            targetMatcher.withDurable(equalTo(TerminusDurability.NONE));
+
+            String content = "testContent";
+            TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
+            messageMatcher.setHeadersMatcher(new MessageHeaderSectionMatcher(true));
+            messageMatcher.setMessageAnnotationsMatcher(new MessageAnnotationsSectionMatcher(true));
+            messageMatcher.setPropertiesMatcher(new MessagePropertiesSectionMatcher(true));
+            messageMatcher.setMessageContentMatcher(new EncodedAmqpValueMatcher(content));
+
+            TestJmsCompletionListener completionListener = new TestJmsCompletionListener();
+            Message message = session.createTextMessage(content);
+
+            testPeer.expectSenderAttach(targetMatcher, false, false);
+            testPeer.expectTransfer(messageMatcher, nullValue(), new Rejected(), true);
+            testPeer.expectDetach(true, true, true);
+
+            // Fallback producer should act as synchronous regardless of the completion listener.
+            try {
+                producer.send(dest, message, completionListener);
+            } catch (JMSException jmsEx) {
+                LOG.debug("Caught expected error from failed send.");
+                fail("Send should not fail as it should be fired as an asynchronous send.");
+            }
+
+            assertTrue("Did not get completion callback", completionListener.awaitCompletion(5, TimeUnit.SECONDS));
+            assertNotNull(completionListener.exception);
+            assertNotNull(completionListener.message);
+            assertEquals(content, ((TextMessage) completionListener.message).getText());
+
+            // TODO - Delayed close can be skipped if delay is long enough as the next close can beat it
+            testPeer.waitForAllHandlersToComplete(1000);
+
+            //Repeat the send (but accept this time) and observe another attach->transfer->detach.
+            testPeer.expectSenderAttach(targetMatcher, false, false);
+            testPeer.expectTransfer(messageMatcher);
+            testPeer.expectDetach(true, true, true);
+
+            TestJmsCompletionListener completionListener2 = new TestJmsCompletionListener();
+
+            producer.send(dest, message, completionListener2);
+
+            assertTrue("Did not get completion callback", completionListener2.awaitCompletion(5, TimeUnit.SECONDS));
+            assertNull(completionListener2.exception);
+            Message receivedMessage2 = completionListener2.message;
+            assertNotNull(receivedMessage2);
+            assertTrue(receivedMessage2 instanceof TextMessage);
+            assertEquals(content, ((TextMessage) receivedMessage2).getText());
+
+            // TODO - Delayed close can be skipped if delay is long enough as the next close can beat it
+            testPeer.waitForAllHandlersToComplete(1000);
+
+            testPeer.expectClose();
+            connection.close();
+
+            testPeer.waitForAllHandlersToComplete(1000);
+        }
+    }
+
+    @Test(timeout = 20000)
+    public void testAnonymousProducerAsyncCompletionListenerSendWhenAnonymousRelayNodeIsNotSupported() throws Exception {
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+
+            // DO NOT add capability to indicate server support for ANONYMOUS-RELAY
+
+            Connection connection = testFixture.establishConnecton(testPeer);
+
+            connection.start();
+
+            testPeer.expectBegin();
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+            String topicName = "myTopic";
+            Topic dest = session.createTopic(topicName);
+
+            // Expect no AMQP traffic when we create the anonymous producer, as it will wait
+            // for an actual send to occur on the producer before anything occurs on the wire
+
+            //Create an anonymous producer
+            MessageProducer producer = session.createProducer(null);
+            assertNotNull("Producer object was null", producer);
+
+            // Expect a new message sent by the above producer to cause creation of a new
+            // sender link to the given destination, then closing the link after the message is sent.
+            TargetMatcher targetMatcher = new TargetMatcher();
+            targetMatcher.withAddress(equalTo(topicName));
+            targetMatcher.withDynamic(equalTo(false));
+            targetMatcher.withDurable(equalTo(TerminusDurability.NONE));
+
+            String content = "testContent";
+            TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
+            messageMatcher.setHeadersMatcher(new MessageHeaderSectionMatcher(true));
+            messageMatcher.setMessageAnnotationsMatcher(new MessageAnnotationsSectionMatcher(true));
+            messageMatcher.setPropertiesMatcher(new MessagePropertiesSectionMatcher(true));
+            messageMatcher.setMessageContentMatcher(new EncodedAmqpValueMatcher(content));
+
+            testPeer.expectSenderAttach(targetMatcher, false, false);
+            testPeer.expectTransfer(messageMatcher);
+            testPeer.expectDetach(true, true, true);
+
+            TestJmsCompletionListener completionListener = new TestJmsCompletionListener();
+            Message message = session.createTextMessage(content);
+
+            producer.send(dest, message, completionListener);
+
+            assertTrue("Did not get completion callback", completionListener.awaitCompletion(5, TimeUnit.SECONDS));
+            assertNull(completionListener.exception);
+            Message receivedMessage = completionListener.message;
+            assertNotNull(receivedMessage);
+            assertTrue(receivedMessage instanceof TextMessage);
+            assertEquals(content, ((TextMessage) receivedMessage).getText());
+
+            // Next send can happen before close of anonymous fallback producer
+            // TODO - Configure timing of delayed close and either expect it or don't
+            testPeer.waitForAllHandlersToComplete(1000);
+
+            //Repeat the send and observe another attach->transfer->detach.
+            testPeer.expectSenderAttach(targetMatcher, false, false);
+            testPeer.expectTransfer(messageMatcher);
+            testPeer.expectDetach(true, true, true);
+
+            TestJmsCompletionListener completionListener2 = new TestJmsCompletionListener();
+
+            producer.send(dest, message, completionListener2);
+
+            assertTrue("Did not get completion callback", completionListener2.awaitCompletion(5, TimeUnit.SECONDS));
+            assertNull(completionListener2.exception);
+            Message receivedMessage2 = completionListener2.message;
+            assertNotNull(receivedMessage2);
+            assertTrue(receivedMessage2 instanceof TextMessage);
+            assertEquals(content, ((TextMessage) receivedMessage2).getText());
+
+            // Close can happen before fallback producer closes leading to no detach being sent.
+            testPeer.waitForAllHandlersToComplete(1000);
 
             testPeer.expectClose();
             connection.close();
