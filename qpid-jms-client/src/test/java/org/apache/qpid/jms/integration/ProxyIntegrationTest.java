@@ -20,14 +20,17 @@ package org.apache.qpid.jms.integration;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.URI;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -49,12 +52,14 @@ import org.apache.qpid.jms.test.proxy.TestProxy.ProxyType;
 import org.apache.qpid.jms.test.testpeer.TestAmqpPeer;
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.apache.qpid.jms.transports.TransportSupport;
+import org.apache.qpid.jms.transports.netty.NettySimpleAmqpServer;
 import org.apache.qpid.jms.util.Repeat;
 import org.apache.qpid.proton.amqp.UnsignedInteger;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.handler.proxy.HttpProxyHandler;
 import io.netty.handler.proxy.ProxyHandler;
 import io.netty.handler.proxy.Socks5ProxyHandler;
 
@@ -206,6 +211,122 @@ public class ProxyIntegrationTest {
             // connection to originalPeer and finalPeer
             assertEquals(2, testProxy.getSuccessCount());
             assertEquals("Unexpected handler supplier usage count", 2, supplierUsageCount.get());
+        }
+    }
+
+    @Test(timeout = 30000)
+    public void testCreateWebSocketConnectionViaHttpProxyAndStart() throws Exception {
+        doTestCreateWebSocketConnectionViaHttpProxyAndStart(false);
+    }
+
+    @Test(timeout = 30000)
+    public void testCreateSecureWebSocketConnectionViaHttpProxyAndStart() throws Exception {
+        doTestCreateWebSocketConnectionViaHttpProxyAndStart(true);
+    }
+
+    private void doTestCreateWebSocketConnectionViaHttpProxyAndStart(boolean secure) throws Exception {
+        TransportOptions options = new TransportOptions();
+        options.setKeyStoreLocation(BROKER_JKS_KEYSTORE);
+        options.setKeyStorePassword(PASSWORD);
+        options.setVerifyHost(false);
+
+        final AtomicBoolean connectedThroughProxy = new AtomicBoolean();
+
+        String connOptions = "?transport.trustStoreLocation=" + CLIENT_JKS_TRUSTSTORE +
+                             "&transport.trustStorePassword=" + PASSWORD +
+                             "&transport.useOpenSSL=" + false;
+
+        try (NettySimpleAmqpServer server = new NettySimpleAmqpServer(options, secure, false, true);
+             TestProxy testProxy = new TestProxy(ProxyType.HTTP)) {
+
+            server.setConnectionIntercepter((protonConnection) -> {
+                connectedThroughProxy.set(true);
+                return null;
+            });
+
+            server.start();
+            testProxy.start();
+
+            JmsConnectionFactory factory = new JmsConnectionFactory(server.getConnectionURI() + connOptions);
+            factory.setExtension(JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER.toString(), (connection, remote) -> {
+                SocketAddress proxyAddress = new InetSocketAddress("localhost", testProxy.getPort());
+                Supplier<ProxyHandler> proxyHandlerFactory = () -> {
+                    return new HttpProxyHandler(proxyAddress);
+                };
+                return proxyHandlerFactory;
+            });
+
+            Connection connection = factory.createConnection();
+            assertNotNull(connection);
+
+            connection.start();
+
+            Session session = connection.createSession();
+            assertNotNull(connection);
+            session.close();
+
+            connection.close();
+
+            assertEquals(1, testProxy.getSuccessCount());
+            assertTrue("Client did not connect to test server through the proxy.", connectedThroughProxy.get());
+        }
+    }
+
+    @Test(timeout = 30000)
+    public void testCreateWebSocketConnectionViaSocksProxyAndStart() throws Exception {
+        doTestCreateWebSocketConnectionViaSocksProxyAndStart(false);
+    }
+
+    @Test(timeout = 30000)
+    public void testCreateSecureWebSocketConnectionViaSocksProxyAndStart() throws Exception {
+        doTestCreateWebSocketConnectionViaSocksProxyAndStart(true);
+    }
+
+    private void doTestCreateWebSocketConnectionViaSocksProxyAndStart(boolean secure) throws Exception {
+        TransportOptions serverOptions = new TransportOptions();
+        serverOptions.setKeyStoreLocation(BROKER_JKS_KEYSTORE);
+        serverOptions.setKeyStorePassword(PASSWORD);
+        serverOptions.setVerifyHost(false);
+
+        final AtomicBoolean connectedThroughProxy = new AtomicBoolean();
+
+        String connOptions = "?transport.trustStoreLocation=" + CLIENT_JKS_TRUSTSTORE +
+                             "&transport.trustStorePassword=" + PASSWORD +
+                             "&transport.useOpenSSL=" + false;
+
+        try (NettySimpleAmqpServer server = new NettySimpleAmqpServer(serverOptions, secure, false, true);
+             TestProxy testProxy = new TestProxy(ProxyType.SOCKS5)) {
+
+            server.setConnectionIntercepter((protonConnection) -> {
+                connectedThroughProxy.set(true);
+                return null;
+            });
+
+            server.start();
+            testProxy.start();
+
+            JmsConnectionFactory factory = new JmsConnectionFactory(server.getConnectionURI() + connOptions);
+            factory.setExtension(JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER.toString(), (connection, remote) -> {
+                SocketAddress proxyAddress = new InetSocketAddress("localhost", testProxy.getPort());
+                Supplier<ProxyHandler> proxyHandlerFactory = () -> {
+                    return new Socks5ProxyHandler(proxyAddress);
+                };
+                return proxyHandlerFactory;
+            });
+
+            Connection connection = factory.createConnection();
+            assertNotNull(connection);
+
+            connection.start();
+
+            Session session = connection.createSession();
+            assertNotNull(connection);
+            session.close();
+
+            connection.close();
+
+            assertEquals(1, testProxy.getSuccessCount());
+            assertTrue("Client did not connect to test server through the proxy.", connectedThroughProxy.get());
         }
     }
 

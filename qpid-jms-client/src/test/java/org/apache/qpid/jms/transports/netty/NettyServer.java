@@ -156,7 +156,7 @@ public abstract class NettyServer implements AutoCloseable {
         return handshakeComplete;
     }
 
-    protected URI getConnectionURI() throws Exception {
+    public URI getConnectionURI() throws Exception {
         if (!started.get()) {
             throw new IllegalStateException("Cannot get URI of non-started server");
         }
