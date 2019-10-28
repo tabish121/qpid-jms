@@ -654,20 +654,20 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             assertTrue(transport.isConnected());
             assertEquals(serverLocation, transport.getRemoteLocation());
 
-            //TODO: why does this make the test pass: Thread.sleep(500);
-
-            transport.close();
-
-            // Additional close should not fail or cause other problems.
-            transport.close();
-
-            assertEquals(1, testProxy.getSuccessCount());
             assertTrue(Wait.waitFor(new Wait.Condition() {
                 @Override
                 public boolean isSatisfied() throws Exception {
                     return server.getChannelActiveCount() == 1;
                 }
             }, 10_000, 10));
+
+            assertEquals(1, testProxy.getSuccessCount());
+
+            transport.close();
+
+            // Additional close should not fail or cause other problems.
+            transport.close();
+
         }
 
         assertTrue(!transportClosed); // Normal shutdown does not trigger the event.
