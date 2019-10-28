@@ -39,6 +39,7 @@ import java.util.function.Supplier;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.Wait;
 import org.apache.qpid.jms.test.proxy.TestProxy;
+import org.apache.qpid.jms.test.proxy.TestProxy.ProxyType;
 import org.apache.qpid.jms.transports.Transport;
 import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.transports.TransportOptions;
@@ -625,7 +626,9 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
     @Test(timeout = 60 * 1000)
     public void testConnectToServerViaProxy() throws Exception {
-        try (TestProxy testProxy = new TestProxy(); NettyEchoServer server = createEchoServer(createServerOptions())) {
+        try (TestProxy testProxy = new TestProxy(ProxyType.SOCKS5);
+             NettyEchoServer server = createEchoServer(createServerOptions())) {
+
             testProxy.start();
             server.start();
 
@@ -654,6 +657,14 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             // Additional close should not fail or cause other problems.
             transport.close();
+
+            assertEquals(1, testProxy.getSuccessCount());
+            assertTrue(Wait.waitFor(new Wait.Condition() {
+                @Override
+                public boolean isSatisfied() throws Exception {
+                    return server.getChannelActiveCount() == 1;
+                }
+            }, 10_000, 10));
         }
 
         assertTrue(!transportClosed); // Normal shutdown does not trigger the event.

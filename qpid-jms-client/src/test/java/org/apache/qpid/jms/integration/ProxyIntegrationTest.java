@@ -25,10 +25,10 @@ import static org.junit.Assert.assertTrue;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.SocketAddress;
 import java.net.URI;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import javax.jms.Connection;
@@ -45,14 +45,12 @@ import org.apache.qpid.jms.JmsConnectionFactory;
 import org.apache.qpid.jms.JmsDefaultConnectionListener;
 import org.apache.qpid.jms.policy.JmsDefaultPrefetchPolicy;
 import org.apache.qpid.jms.test.proxy.TestProxy;
+import org.apache.qpid.jms.test.proxy.TestProxy.ProxyType;
 import org.apache.qpid.jms.test.testpeer.TestAmqpPeer;
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.apache.qpid.jms.transports.TransportSupport;
 import org.apache.qpid.jms.util.Repeat;
 import org.apache.qpid.proton.amqp.UnsignedInteger;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,60 +64,69 @@ public class ProxyIntegrationTest {
     private static final String CLIENT_JKS_TRUSTSTORE = "src/test/resources/client-jks.truststore";
     private static final String PASSWORD = "password";
 
-    private static TestProxy testProxy;
-
-    @BeforeClass
-    public static void setUpOnce() {
-        testProxy = new TestProxy();
-        testProxy.start();
-    }
-
-    @AfterClass
-    public static void tearDown() {
-        testProxy.close();
-    }
-
-    @Before
-    public void setUp() {
-        testProxy.resetCounter();
-    }
-
     @Test(timeout = 20000)
     public void testCreateAndCloseConnectionViaSocksProxy() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer()) {
-            Connection connection = establishConnecton(testPeer, false, null);
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();
+             TestProxy testProxy = new TestProxy(ProxyType.SOCKS5)) {
+            testProxy.start();
+
+            AtomicInteger supplierUsageCount = new AtomicInteger();
+            Supplier<ProxyHandler> proxyHandlerSupplier = () -> {
+                supplierUsageCount.incrementAndGet();
+                return new Socks5ProxyHandler(new InetSocketAddress("localhost", testProxy.getPort()));
+            };
+
+            Connection connection = establishConnecton(testPeer, proxyHandlerSupplier, false, null);
+
             testPeer.expectClose();
             connection.close();
+
             assertEquals(1, testProxy.getSuccessCount());
+            assertEquals("Unexpected handler supplier usage count", 1, supplierUsageCount.get());
         }
     }
 
     @Test(timeout = 20000)
-    public void testCreateAndCloseSslConnectionViaSocksProxyJDK() throws Exception {
+    public void testCreateAndCloseSslConnectionViaSocksProxy() throws Exception {
         TransportOptions sslOptions = new TransportOptions();
         sslOptions.setKeyStoreLocation(BROKER_JKS_KEYSTORE);
         sslOptions.setKeyStorePassword(PASSWORD);
         sslOptions.setVerifyHost(false);
 
         SSLContext context = TransportSupport.createJdkSslContext(sslOptions);
-        try (TestAmqpPeer testPeer = new TestAmqpPeer(context, false)) {
+        try (TestAmqpPeer testPeer = new TestAmqpPeer(context, false);
+             TestProxy testProxy = new TestProxy(ProxyType.SOCKS5)) {
+            testProxy.start();
+
             String connOptions = "?transport.trustStoreLocation=" + CLIENT_JKS_TRUSTSTORE + "&" + "transport.trustStorePassword=" + PASSWORD
                     + "&" + "transport.useOpenSSL=" + false;
-            Connection connection = establishConnecton(testPeer, true, connOptions);
+            AtomicInteger supplierUsageCount = new AtomicInteger();
+            Supplier<ProxyHandler> proxyHandlerSupplier = () -> {
+                supplierUsageCount.incrementAndGet();
+                return new Socks5ProxyHandler(new InetSocketAddress("localhost", testProxy.getPort()));
+            };
+
+            Connection connection = establishConnecton(testPeer, proxyHandlerSupplier, true, connOptions);
 
             Socket socket = testPeer.getClientSocket();
             assertTrue(socket instanceof SSLSocket);
 
             testPeer.expectClose();
             connection.close();
+
             assertEquals(1, testProxy.getSuccessCount());
+            assertEquals("Unexpected handler supplier usage count", 1, supplierUsageCount.get());
         }
     }
 
     @Repeat(repetitions = 1)
     @Test(timeout = 20000)
-    public void testCreateConsumerAfterConnectionDropsViaProxy() throws Exception {
-        try (TestAmqpPeer originalPeer = new TestAmqpPeer(); TestAmqpPeer finalPeer = new TestAmqpPeer();) {
+    public void testFailoverCreateConsumerAfterConnectionDropsViaSocksProxy() throws Exception {
+        try (TestAmqpPeer originalPeer = new TestAmqpPeer();
+             TestAmqpPeer finalPeer = new TestAmqpPeer();
+             TestProxy testProxy = new TestProxy(ProxyType.SOCKS5)) {
+            testProxy.start();
+
             final CountDownLatch originalConnected = new CountDownLatch(1);
             final CountDownLatch finalConnected = new CountDownLatch(1);
 
@@ -137,7 +144,13 @@ public class ProxyIntegrationTest {
             originalPeer.expectBegin();
             originalPeer.dropAfterLastHandler();
 
-            final JmsConnection connection = establishAnonymousConnecton(testProxy.getPort(), originalPeer, finalPeer);
+            AtomicInteger supplierUsageCount = new AtomicInteger();
+            Supplier<ProxyHandler> proxyHandlerSupplier = () -> {
+                supplierUsageCount.incrementAndGet();
+                return new Socks5ProxyHandler(new InetSocketAddress("localhost", testProxy.getPort()));
+            };
+
+            final JmsConnection connection = establishFailoverConnecton(proxyHandlerSupplier, originalPeer, finalPeer);
             ((JmsDefaultPrefetchPolicy) connection.getPrefetchPolicy()).setQueuePrefetch(0);
             connection.addConnectionListener(new JmsDefaultConnectionListener() {
                 @Override
@@ -159,6 +172,7 @@ public class ProxyIntegrationTest {
             connection.start();
 
             assertTrue("Should connect to original peer", originalConnected.await(5, TimeUnit.SECONDS));
+            assertEquals("Unexpected handler supplier usage count", 1, supplierUsageCount.get());
 
             // --- Post Failover Expectations of FinalPeer --- //
 
@@ -188,14 +202,14 @@ public class ProxyIntegrationTest {
             connection.close();
 
             finalPeer.waitForAllHandlersToComplete(1000);
-            if (true) {
-                // connection to originalPeer and finalPeer
-                assertEquals(2, testProxy.getSuccessCount());
-            }
+
+            // connection to originalPeer and finalPeer
+            assertEquals(2, testProxy.getSuccessCount());
+            assertEquals("Unexpected handler supplier usage count", 2, supplierUsageCount.get());
         }
     }
 
-    private Connection establishConnecton(TestAmqpPeer testPeer, boolean ssl, String optionsString) throws JMSException {
+    private Connection establishConnecton(TestAmqpPeer testPeer, Supplier<ProxyHandler> proxyHandlerSupplier, boolean ssl, String optionsString) throws JMSException {
         testPeer.expectSaslPlain("guest", "guest");
         testPeer.expectOpen();
 
@@ -206,11 +220,7 @@ public class ProxyIntegrationTest {
         LOG.debug("connect to {}", remoteURI);
         JmsConnectionFactory factory = new JmsConnectionFactory(remoteURI);
         factory.setExtension(JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER.toString(), (connection1, remote) -> {
-            SocketAddress proxyAddress = new InetSocketAddress("localhost", testProxy.getPort());
-            Supplier<ProxyHandler> proxyHandlerFactory = () -> {
-                return new Socks5ProxyHandler(proxyAddress);
-            };
-            return proxyHandlerFactory;
+            return proxyHandlerSupplier;
         });
         Connection connection = factory.createConnection("guest", "guest");
 
@@ -222,7 +232,7 @@ public class ProxyIntegrationTest {
         return connection;
     }
 
-    private JmsConnection establishAnonymousConnecton(int proxyPort, TestAmqpPeer... peers) throws JMSException {
+    private JmsConnection establishFailoverConnecton(Supplier<ProxyHandler> proxyHandlerSupplier, TestAmqpPeer... peers) throws JMSException {
         if (peers.length == 0) {
             throw new IllegalArgumentException("No test peers were given, at least 1 required");
         }
@@ -240,15 +250,10 @@ public class ProxyIntegrationTest {
         remoteURI += ")?failover.maxReconnectAttempts=10";
 
         JmsConnectionFactory factory = new JmsConnectionFactory(remoteURI);
-        if (proxyPort > 0) {
-            factory.setExtension(JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER.toString(), (connection, remote) -> {
-                SocketAddress proxyAddress = new InetSocketAddress("localhost", proxyPort);
-                Supplier<ProxyHandler> proxyHandlerFactory = () -> {
-                    return new Socks5ProxyHandler(proxyAddress);
-                };
-                return proxyHandlerFactory;
-            });
-        }
+        factory.setExtension(JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER.toString(), (connection, remote) -> {
+            return proxyHandlerSupplier;
+        });
+
         Connection connection = factory.createConnection();
 
         return (JmsConnection) connection;
