@@ -633,6 +633,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             server.start();
 
             int port = server.getServerPort();
+            LOG.info("Echo server bound at: {}", port);
             URI serverLocation = new URI("tcp://localhost:" + port);
 
             TransportOptions clientOptions = createClientOptions();
@@ -652,6 +653,8 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             assertTrue(transport.isConnected());
             assertEquals(serverLocation, transport.getRemoteLocation());
+
+            //TODO: why does this make the test pass: Thread.sleep(500);
 
             transport.close();
 
