@@ -94,6 +94,9 @@ public abstract class AmqpEndpointBuilder<T extends AmqpEndpoint<?>, P, I extend
         this.request = request;
         this.resourceConsumer = resourceConsumer;
 
+        // Store the request with the provider for failure if connection drops
+        provider.addToFailOnConnectionDropTracking(request);
+
         // Create the local end of the manage resource.
         endpoint = createEndpoint(resourceInfo);
         endpoint.setLinkedResource(this)
@@ -126,6 +129,8 @@ public abstract class AmqpEndpointBuilder<T extends AmqpEndpoint<?>, P, I extend
     }
 
     private void handleRemoteOpen(E endpoint) {
+        provider.removeFromFailOnConnectionDropTracking(request);
+
         processEndpointRemotelyOpened(getEndpoint(), getResourceInfo());
 
         if (!isClosePending()) {
@@ -156,6 +161,8 @@ public abstract class AmqpEndpointBuilder<T extends AmqpEndpoint<?>, P, I extend
     }
 
     private void handleRemotecClose(E endpoint) {
+        provider.removeFromFailOnConnectionDropTracking(request);
+
         getResourceInfo().setState(ResourceState.REMOTELY_CLOSED);
 
         // If the resource being built is closed during the creation process
