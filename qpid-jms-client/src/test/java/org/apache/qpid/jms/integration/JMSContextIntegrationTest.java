@@ -18,7 +18,6 @@
  */
 package org.apache.qpid.jms.integration;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.ANONYMOUS_RELAY;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 

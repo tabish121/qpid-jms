@@ -41,7 +41,7 @@ public class AmqpSubscriptionTracker {
     public String reserveNextSubscriptionLinkName(String subscriptionName, JmsConsumerInfo consumerInfo) {
         validateSubscriptionName(subscriptionName);
 
-        if(consumerInfo == null) {
+        if (consumerInfo == null) {
             throw new IllegalArgumentException("Consumer info must not be null.");
         }
 
@@ -60,15 +60,15 @@ public class AmqpSubscriptionTracker {
     }
 
     private void validateSubscriptionName(String subscriptionName) {
-        if(subscriptionName == null) {
+        if (subscriptionName == null) {
             throw new IllegalArgumentException("Subscription name must not be null.");
         }
 
-        if(subscriptionName.isEmpty()) {
+        if (subscriptionName.isEmpty()) {
             throw new IllegalArgumentException("Subscription name must not be empty.");
         }
 
-        if(subscriptionName.contains(SUB_NAME_DELIMITER)) {
+        if (subscriptionName.contains(SUB_NAME_DELIMITER)) {
             throw new IllegalArgumentException("Subscription name must not contain '" + SUB_NAME_DELIMITER +"' character.");
         }
     }
@@ -78,10 +78,10 @@ public class AmqpSubscriptionTracker {
         String selector = consumerInfo.getSelector();
 
         SubDetails subDetails = null;
-        if(sharedDurableSubs.containsKey(subscriptionName)) {
+        if (sharedDurableSubs.containsKey(subscriptionName)) {
             subDetails = sharedDurableSubs.get(subscriptionName);
 
-            if(subDetails.matches(topic, selector)){
+            if (subDetails.matches(topic, selector)){
                 subDetails.addSubscriber(consumerInfo);
             } else {
                 throw new JMSRuntimeException("Subscription details dont match existing subscriber.");
@@ -126,10 +126,10 @@ public class AmqpSubscriptionTracker {
         String selector = consumerInfo.getSelector();
 
         SubDetails subDetails = null;
-        if(sharedVolatileSubs.containsKey(subscriptionName)) {
+        if (sharedVolatileSubs.containsKey(subscriptionName)) {
             subDetails = sharedVolatileSubs.get(subscriptionName);
 
-            if(subDetails.matches(topic, selector)){
+            if (subDetails.matches(topic, selector)){
                 subDetails.addSubscriber(consumerInfo);
             } else {
                 throw new JMSRuntimeException("Subscription details dont match existing subscriber");
@@ -206,22 +206,22 @@ public class AmqpSubscriptionTracker {
         if (subscriptionName != null && !subscriptionName.isEmpty()) {
             if (consumerInfo.isShared()) {
                 if (consumerInfo.isDurable()) {
-                    if(sharedDurableSubs.containsKey(subscriptionName)) {
+                    if (sharedDurableSubs.containsKey(subscriptionName)) {
                         SubDetails subDetails = sharedDurableSubs.get(subscriptionName);
                         subDetails.removeSubscriber(consumerInfo);
 
                         int count = subDetails.activeSubscribers();
-                        if(count < 1) {
+                        if (count < 1) {
                             sharedDurableSubs.remove(subscriptionName);
                         }
                     }
                 } else {
-                    if(sharedVolatileSubs.containsKey(subscriptionName)) {
+                    if (sharedVolatileSubs.containsKey(subscriptionName)) {
                         SubDetails subDetails = sharedVolatileSubs.get(subscriptionName);
                         subDetails.removeSubscriber(consumerInfo);
 
                         int count = subDetails.activeSubscribers();
-                        if(count < 1) {
+                        if (count < 1) {
                             sharedVolatileSubs.remove(subscriptionName);
                         }
                     }
@@ -239,7 +239,7 @@ public class AmqpSubscriptionTracker {
         private int totalSubscriberCount;
 
         public SubDetails(JmsDestination topic, String selector, JmsConsumerInfo info) {
-            if(topic == null) {
+            if (topic == null) {
                 throw new IllegalArgumentException("Topic destination must not be null");
             }
 
@@ -249,7 +249,7 @@ public class AmqpSubscriptionTracker {
         }
 
         public void addSubscriber(JmsConsumerInfo info) {
-            if(info == null) {
+            if (info == null) {
                 throw new IllegalArgumentException("Consumer info must not be null");
             }
 
@@ -270,7 +270,7 @@ public class AmqpSubscriptionTracker {
         }
 
         public boolean matches(JmsDestination newTopic, String newSelector) {
-            if(!topic.equals(newTopic)) {
+            if (!topic.equals(newTopic)) {
                 return false;
             }
 
@@ -280,6 +280,5 @@ public class AmqpSubscriptionTracker {
                 return selector.equals(newSelector);
             }
         }
-
     }
 }

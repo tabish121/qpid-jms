@@ -32,15 +32,13 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Properties;
-import org.apache.qpid.proton.amqp.messaging.Section;
-import org.apache.qpid.proton.message.Message;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Properties;
+import org.apache.qpid.protonj2.types.messaging.Section;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -166,7 +164,7 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
         assertNull(copy1.getContentType());
 
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade2 = createNewBytesMessageFacade();
-        Symbol contentType = Symbol.valueOf("content-type");
+        String contentType = "content-type";
         amqpBytesMessageFacade2.setContentType(contentType);
 
         AmqpJmsBytesMessageFacade copy2 = amqpBytesMessageFacade2.copy();
@@ -218,8 +216,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testClearBodySetsBodyLength0AndCausesEmptyInputStream() throws Exception {
         byte[] bytes = "myBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         amqpBytesMessageFacade.clearBody();
@@ -234,8 +232,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testClearBodyWithExistingInputStream() throws Exception {
         byte[] bytes = "myBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         @SuppressWarnings("unused")
@@ -252,8 +250,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testClearBodyWithExistingOutputStream() throws Exception {
         byte[] bytes = "myBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         @SuppressWarnings("unused")
@@ -294,7 +292,7 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetInputStreamUsingReceivedMessageWithNoBodySectionReturnsEmptyInputStream() throws Exception {
-        Message message = Message.Factory.create();
+        AmqpMessage message = new AmqpMessage();
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         InputStream byteArrayInputStream = amqpBytesMessageFacade.getInputStream();
@@ -306,9 +304,9 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetBodyLengthUsingReceivedMessageWithDataSectionContainingNonZeroLengthBinary() throws Exception {
-        Message message = Message.Factory.create();
+        AmqpMessage message = new AmqpMessage();
         int length = 5;
-        message.setBody(new Data(new Binary(new byte[length])));
+        message.body(new Data(new Binary(new byte[length])));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         assertEquals("Message reports unexpected length", length, amqpBytesMessageFacade.getBodyLength());
@@ -316,9 +314,9 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetBodyLengthUsingReceivedMessageWithAmqpValueSectionContainingNonZeroLengthBinary() throws Exception {
-        Message message = Message.Factory.create();
+        AmqpMessage message = new AmqpMessage();
         int length = 10;
-        message.setBody(new AmqpValue(new Binary(new byte[length])));
+        message.body(new AmqpValue<Binary>(new Binary(new byte[length])));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         assertEquals("Message reports unexpected length", length, amqpBytesMessageFacade.getBodyLength());
@@ -326,8 +324,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetBodyLengthUsingReceivedMessageWithAmqpValueSectionContainingZeroLengthBinary() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(new Binary(new byte[0])));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<Binary>(new Binary(new byte[0])));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         assertEquals("Message reports unexpected length", 0, amqpBytesMessageFacade.getBodyLength());
@@ -335,8 +333,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetBodyLengthUsingReceivedMessageWithAmqpValueSectionContainingNull() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(null));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<Object>(null));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         assertEquals("Message reports unexpected length", 0, amqpBytesMessageFacade.getBodyLength());
@@ -346,8 +344,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testInputStreamUsingReceivedMessageWithAmqpValueSectionContainingBinary() throws Exception {
         byte[] bytes = "myBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(new Binary(bytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<Binary>(new Binary(bytes)));
 
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
         InputStream bytesStream = amqpBytesMessageFacade.getInputStream();
@@ -365,8 +363,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testInputStreamUsingReceivedMessageWithDataSection() throws Exception {
         byte[] bytes = "myBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bytes)));
 
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
         InputStream bytesStream = amqpBytesMessageFacade.getInputStream();
@@ -383,8 +381,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetInputStreamUsingReceivedMessageWithDataSectionContainingNothingReturnsEmptyStream() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new Data(null));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data((Binary) null));
 
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
         InputStream bytesStream = amqpBytesMessageFacade.getInputStream();
@@ -396,8 +394,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetMethodsWithNonAmqpValueNonDataSectionThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpSequence(new ArrayList<Object>()));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpSequence<Object>(new ArrayList<Object>()));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         try {
@@ -417,8 +415,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetMethodsWithAmqpValueContainingNonNullNonBinaryValueThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(true));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<Boolean>(true));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         try {
@@ -447,8 +445,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
         byte[] orig = "myOrigBytes".getBytes();
         byte[] replacement = "myReplacementBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(orig)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(orig)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         OutputStream os = amqpBytesMessageFacade.getOutputStream();
@@ -477,8 +475,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testClearBodyHandlesErrorFromOutputStream() throws Exception {
         byte[] bodyBytes = "myOrigBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bodyBytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bodyBytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         OutputStream outputStream = amqpBytesMessageFacade.getOutputStream();
@@ -492,8 +490,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testClearBodyHandlesErrorFromInputStream() throws Exception {
         byte[] bodyBytes = "myOrigBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bodyBytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bodyBytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         InputStream inputStream = amqpBytesMessageFacade.getInputStream();
@@ -507,8 +505,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testResetHandlesErrorFromOutputStream() throws Exception {
         byte[] bodyBytes = "myOrigBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bodyBytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bodyBytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         OutputStream outputStream = amqpBytesMessageFacade.getOutputStream();
@@ -522,8 +520,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testResetHandlesErrorFromInputStream() throws Exception {
         byte[] bodyBytes = "myOrigBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bodyBytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bodyBytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         InputStream inputStream = amqpBytesMessageFacade.getInputStream();
@@ -546,8 +544,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testHasBodyWithContent() throws Exception {
         byte[] bodyBytes = "myOrigBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bodyBytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bodyBytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         assertTrue(amqpBytesMessageFacade.hasBody());
@@ -557,8 +555,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testHasBodyAfterClear() throws Exception {
         byte[] bodyBytes = "myOrigBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bodyBytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bodyBytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         assertTrue(amqpBytesMessageFacade.hasBody());
@@ -572,8 +570,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     public void testHasBodyWithActiveInputStream() throws Exception {
         byte[] bodyBytes = "myOrigBytes".getBytes();
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(bodyBytes)));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(bodyBytes)));
         AmqpJmsBytesMessageFacade amqpBytesMessageFacade = createReceivedBytesMessageFacade(createMockAmqpConsumer(), message);
 
         assertTrue(amqpBytesMessageFacade.hasBody());
@@ -603,10 +601,10 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     //--------- utility methods ----------
 
-    private void assertDataBodyAsExpected(Section body, int length) {
+    private void assertDataBodyAsExpected(Section<?> body, int length) {
         assertNotNull("Expected body section to be present", body);
         assertEquals("Unexpected body section type", Data.class, body.getClass());
-        Binary value = ((Data) body).getValue();
+        Binary value = ((Data) body).getBinary();
         assertNotNull(value);
         assertEquals("Unexpected body length", length, value.getLength());
     }

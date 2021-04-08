@@ -20,9 +20,6 @@
  */
 package org.apache.qpid.jms.integration;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.NETWORK_HOST;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.OPEN_HOSTNAME;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.PORT;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.allOf;
@@ -67,7 +64,6 @@ import org.apache.qpid.jms.JmsConnectionExtensions;
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.apache.qpid.jms.JmsConnectionRemotelyClosedException;
 import org.apache.qpid.jms.JmsDefaultConnectionListener;
-import org.apache.qpid.jms.provider.amqp.AmqpSupport;
 import org.apache.qpid.jms.provider.exceptions.ProviderConnectionRedirectedException;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.Wait;
@@ -84,6 +80,7 @@ import org.apache.qpid.proton.amqp.Symbol;
 import org.apache.qpid.proton.amqp.UnsignedInteger;
 import org.apache.qpid.proton.amqp.transaction.TxnCapability;
 import org.apache.qpid.proton.engine.impl.AmqpHeader;
+import org.apache.qpid.protonj2.engine.impl.ProtonConstants;
 import org.hamcrest.Matcher;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -104,16 +101,23 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 10000)
     public void testCreateConnectionToNonSaslPeer() throws Exception {
-        doConnectionWithUnexpectedHeaderTestImpl(AmqpHeader.HEADER);
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+            testPeer.expectHeader(AmqpHeader.SASL_HEADER, AmqpHeader.HEADER);
+
+            ConnectionFactory factory = new JmsConnectionFactory("amqp://localhost:" + testPeer.getServerPort());
+            try {
+                factory.createConnection("guest", "guest");
+                fail("Expected connection creation to fail");
+            } catch (JMSException jmse) {
+                assertThat(jmse.getMessage(), containsString("Remote does not support SASL authentication"));
+            }
+        }
     }
 
     @Test(timeout = 10000)
     public void testCreateConnectionToNonAmqpPeer() throws Exception {
         byte[] responseHeader = new byte[] { 'N', 'O', 'T', '-', 'A', 'M', 'Q', 'P' };
-        doConnectionWithUnexpectedHeaderTestImpl(responseHeader);
-    }
 
-    private void doConnectionWithUnexpectedHeaderTestImpl(byte[] responseHeader) throws Exception, IOException {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
 
             testPeer.expectHeader(AmqpHeader.SASL_HEADER, responseHeader);
@@ -372,9 +376,10 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     public void testConnectionPropertiesContainExpectedMetaData() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
 
-            Matcher<?> connPropsMatcher = allOf(hasEntry(AmqpSupport.PRODUCT, MetaDataSupport.PROVIDER_NAME),
-                    hasEntry(AmqpSupport.VERSION, MetaDataSupport.PROVIDER_VERSION),
-                    hasEntry(AmqpSupport.PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
+            Matcher<?> connPropsMatcher = allOf(
+                    hasEntry(PRODUCT, MetaDataSupport.PROVIDER_NAME),
+                    hasEntry(VERSION, MetaDataSupport.PROVIDER_VERSION),
+                    hasEntry(PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
 
             testPeer.expectSaslAnonymous();
             testPeer.expectOpen(connPropsMatcher, null, false);
@@ -399,7 +404,7 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 20000)
     public void testMaxFrameSizeOptionCommunicatedInOpenDefault() throws Exception {
-        doMaxFrameSizeOptionTestImpl(-1, UnsignedInteger.MAX_VALUE);
+        doMaxFrameSizeOptionTestImpl(-1, UnsignedInteger.valueOf(ProtonConstants.DEFAULT_MAX_AMQP_FRAME_SIZE));
     }
 
     private void doMaxFrameSizeOptionTestImpl(int uriOption, UnsignedInteger transmittedValue) throws JMSException, InterruptedException, Exception, IOException {
@@ -563,9 +568,9 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
             // Tell the test peer to close the connection when executing its last handler
             Map<Symbol, Object> errorInfo = new HashMap<Symbol, Object>();
-            errorInfo.put(OPEN_HOSTNAME, redirectVhost);
-            errorInfo.put(NETWORK_HOST, redirectNetworkHost);
-            errorInfo.put(PORT, 5677);
+            errorInfo.put(TestAmqpPeer.OPEN_HOSTNAME, redirectVhost);
+            errorInfo.put(TestAmqpPeer.NETWORK_HOST, redirectNetworkHost);
+            errorInfo.put(TestAmqpPeer.PORT, 5677);
 
             testPeer.remotelyCloseConnection(true, ConnectionError.REDIRECT, "Connection redirected", errorInfo);
 
@@ -921,9 +926,9 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             Matcher<?> connPropsMatcher = allOf(
                     hasEntry(Symbol.valueOf(property1), value1),
                     hasEntry(Symbol.valueOf(property2), value2),
-                    hasEntry(AmqpSupport.PRODUCT, MetaDataSupport.PROVIDER_NAME),
-                    hasEntry(AmqpSupport.VERSION, MetaDataSupport.PROVIDER_VERSION),
-                    hasEntry(AmqpSupport.PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
+                    hasEntry(TestAmqpPeer.PRODUCT, MetaDataSupport.PROVIDER_NAME),
+                    hasEntry(TestAmqpPeer.VERSION, MetaDataSupport.PROVIDER_VERSION),
+                    hasEntry(TestAmqpPeer.PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
 
             testPeer.expectSaslAnonymous();
             testPeer.expectOpen(connPropsMatcher, null, false);
@@ -997,9 +1002,9 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
 
             Matcher<?> connPropsMatcher = allOf(
-                    hasEntry(AmqpSupport.PRODUCT, MetaDataSupport.PROVIDER_NAME),
-                    hasEntry(AmqpSupport.VERSION, MetaDataSupport.PROVIDER_VERSION),
-                    hasEntry(AmqpSupport.PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
+                    hasEntry(PRODUCT, MetaDataSupport.PROVIDER_NAME),
+                    hasEntry(VERSION, MetaDataSupport.PROVIDER_VERSION),
+                    hasEntry(PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
 
             testPeer.expectSaslAnonymous();
             testPeer.expectOpen(connPropsMatcher, null, false);
@@ -1012,9 +1017,9 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             factory.setExtension(JmsConnectionExtensions.AMQP_OPEN_PROPERTIES.toString(), (connection, uri) -> {
                 Map<String, Object> properties = new HashMap<>();
 
-                properties.put(AmqpSupport.PRODUCT.toString(), "Super-Duper-Qpid-JMS");
-                properties.put(AmqpSupport.VERSION.toString(), "5.0.32.Final");
-                properties.put(AmqpSupport.PLATFORM.toString(), "Commodore 64");
+                properties.put(PRODUCT.toString(), "Super-Duper-Qpid-JMS");
+                properties.put(VERSION.toString(), "5.0.32.Final");
+                properties.put(PLATFORM.toString(), "Commodore 64");
 
                 return properties;
             });

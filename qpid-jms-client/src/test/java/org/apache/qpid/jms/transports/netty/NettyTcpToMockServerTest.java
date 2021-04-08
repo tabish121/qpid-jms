@@ -16,11 +16,6 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.NETWORK_HOST;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.OPEN_HOSTNAME;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.PATH;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.PORT;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SCHEME;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -60,10 +55,16 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
 
     private static final Logger LOG = LoggerFactory.getLogger(NettyTcpToMockServerTest.class);
 
+    public static final Symbol PATH = Symbol.valueOf("path");
+    public static final Symbol SCHEME = Symbol.valueOf("scheme");
+    public static final Symbol PORT = Symbol.valueOf("port");
+    public static final Symbol NETWORK_HOST = Symbol.valueOf("network-host");
+    public static final Symbol OPEN_HOSTNAME = Symbol.valueOf("hostname");
+
     @Rule
     public TestName test = new TestName();
 
-    @Test(timeout = 60 * 1000)
+    @Test(timeout = 30_000)
     public void testConnectToServer() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions())) {
             server.start();
@@ -82,7 +83,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60 * 1000)
+    @Test(timeout = 30_000)
     public void testServerEnforcesExclusiveContainerCapability() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions())) {
             server.setAllowNonSaslConnections(true);
@@ -112,7 +113,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60 * 1000)
+    @Test(timeout = 30_000)
     public void testConnectToServerFailsWhenSaslDisabled() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions())) {
             server.start();
@@ -121,7 +122,6 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
             Connection connection = null;
             try {
                 connection = cf.createConnection();
-                connection.start();
                 fail("Should throw an exception when not using SASL");
             } catch (Exception ex) {
                 LOG.info("Caught expected exception while attempting to connect");
@@ -133,7 +133,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60 * 1000)
+    @Test(timeout = 30_000)
     public void testConnectToServerWhenSaslDisabledAndServerAllowsIt() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions())) {
             server.setAllowNonSaslConnections(true);
@@ -153,7 +153,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60 * 1000)
+    @Test(timeout = 30_000)
     public void testConnectToServerWhenRedirected() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions());
              NettySimpleAmqpServer redirect = createServer(createServerOptions())) {
@@ -218,7 +218,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 20 * 1000)
+    @Test(timeout = 30_000)
     public void testConnectToWSServerWhenRedirectedWithNewPath() throws Exception {
         try (NettySimpleAmqpServer primary = createWSServer(createServerOptions());
              NettySimpleAmqpServer redirect = createWSServer(createServerOptions())) {
@@ -288,7 +288,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60000)
+    @Test(timeout = 30_000)
     public void testConnectToWSServerWithHttpHeaderConnectionExtensions() throws Exception {
         try (NettySimpleAmqpServer server = createWSServer(createServerOptions())) {
             server.start();

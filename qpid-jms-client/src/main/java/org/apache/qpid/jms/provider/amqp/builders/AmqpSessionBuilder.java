@@ -19,15 +19,15 @@ package org.apache.qpid.jms.provider.amqp.builders;
 import org.apache.qpid.jms.meta.JmsSessionInfo;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
 import org.apache.qpid.jms.provider.amqp.AmqpSession;
-import org.apache.qpid.proton.engine.Session;
+import org.apache.qpid.protonj2.engine.Session;
 
 /**
- * Resource builder responsible for creating and opening an AmqpSession instance.
+ * AMQP {@link Session} builder to create {@link AmqpSession} instances.
  */
-public class AmqpSessionBuilder extends AmqpResourceBuilder<AmqpSession, AmqpConnection, JmsSessionInfo, Session> {
+public class AmqpSessionBuilder extends AmqpEndpointBuilder<AmqpSession, AmqpConnection, JmsSessionInfo, Session> {
 
-    public AmqpSessionBuilder(AmqpConnection parent, JmsSessionInfo resourceInfo) {
-        super(parent, resourceInfo);
+    public AmqpSessionBuilder(AmqpConnection connection, JmsSessionInfo resourceInfo) {
+        super(connection.getProvider(), connection, resourceInfo);
     }
 
     @Override
@@ -37,15 +37,15 @@ public class AmqpSessionBuilder extends AmqpResourceBuilder<AmqpSession, AmqpCon
         Session session = getParent().getEndpoint().session();
         session.setIncomingCapacity(Integer.MAX_VALUE);
         if (outgoingWindow >= 0) {
-            session.setOutgoingWindow(outgoingWindow);
+            // TODO: session.setOutgoingWindow(outgoingWindow);
         }
 
         return session;
     }
 
     @Override
-    protected AmqpSession createResource(AmqpConnection parent, JmsSessionInfo resourceInfo, Session endpoint) {
-        return new AmqpSession(parent, resourceInfo, endpoint);
+    protected AmqpSession createResource(AmqpConnection connection, JmsSessionInfo resourceInfo, Session session) {
+        return new AmqpSession(connection, resourceInfo, session);
     }
 
     @Override

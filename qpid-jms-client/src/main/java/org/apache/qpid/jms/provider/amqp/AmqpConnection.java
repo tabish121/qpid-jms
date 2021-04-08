@@ -17,17 +17,11 @@
 package org.apache.qpid.jms.provider.amqp;
 
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.JmsTemporaryDestination;
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
-import org.apache.qpid.jms.meta.JmsResource.ResourceState;
 import org.apache.qpid.jms.meta.JmsSessionId;
 import org.apache.qpid.jms.meta.JmsSessionInfo;
 import org.apache.qpid.jms.provider.AsyncResult;
@@ -35,53 +29,54 @@ import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpSessionBuilder;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpTemporaryDestinationBuilder;
 import org.apache.qpid.jms.provider.amqp.message.AmqpJmsMessageFactory;
-import org.apache.qpid.jms.provider.exceptions.ProviderConnectionRemotelyClosedException;
-import org.apache.qpid.proton.engine.Connection;
+import org.apache.qpid.protonj2.engine.Connection;
+import org.apache.qpid.protonj2.engine.Sender;
+import org.apache.qpid.protonj2.engine.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Connection> implements AmqpResourceParent {
+public class AmqpConnection extends AmqpAbstractEndpoint<JmsConnectionInfo, Connection> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpConnection.class);
 
-    // TODO - URI configuration
-
-    private AmqpSubscriptionTracker subTracker = new AmqpSubscriptionTracker();
-
+    private final AmqpSubscriptionTracker subTracker = new AmqpSubscriptionTracker();
     private final AmqpJmsMessageFactory amqpMessageFactory;
 
     private final URI remoteURI;
-    private final Map<JmsSessionId, AmqpSession> sessions = new HashMap<JmsSessionId, AmqpSession>();
-    private final Map<JmsDestination, AmqpTemporaryDestination> tempDests = new HashMap<JmsDestination, AmqpTemporaryDestination>();
-    private final AmqpProvider provider;
     private final AmqpConnectionProperties properties;
     private AmqpConnectionSession connectionSession;
 
     private boolean objectMessageUsesAmqpTypes = false;
 
-    public AmqpConnection(AmqpProvider provider, JmsConnectionInfo info, Connection protonConnection) {
-        super(info, protonConnection, provider);
+    public AmqpConnection(AmqpProvider provider, AmqpConnectionProperties properties, JmsConnectionInfo info, Connection protonConnection) {
+        super(provider, info, protonConnection);
 
-        this.provider = provider;
+        this.properties = properties;
         this.remoteURI = provider.getRemoteURI();
         this.amqpMessageFactory = new AmqpJmsMessageFactory(this);
-
-        // Create connection properties initialized with defaults from the JmsConnectionInfo
-        this.properties = new AmqpConnectionProperties(info, provider);
     }
 
     public void createSession(JmsSessionInfo sessionInfo, AsyncResult request) {
-        AmqpSessionBuilder builder = new AmqpSessionBuilder(this, sessionInfo);
-        builder.buildResource(request);
+        new AmqpSessionBuilder(this, sessionInfo).buildEndpoint(request);
     }
 
     public void createTemporaryDestination(JmsTemporaryDestination destination, AsyncResult request) {
-        AmqpTemporaryDestinationBuilder builder = new AmqpTemporaryDestinationBuilder(connectionSession, destination);
-        builder.buildResource(request);
+        new AmqpTemporaryDestinationBuilder(connectionSession, destination).buildEndpoint(request);
     }
 
     public AmqpTemporaryDestination getTemporaryDestination(JmsTemporaryDestination destination) {
-        return tempDests.get(destination);
+        for (Sender sender : connectionSession.getEndpoint().senders()) {
+            try {
+                AmqpTemporaryDestination temp = sender.getLinkedResource(AmqpTemporaryDestination.class);
+                if (destination.equals(temp.getResourceInfo())) {
+                    return temp;
+                }
+            } catch (ClassCastException ex) {
+                // Not an AmqpTempDestination continue searching
+            }
+        }
+
+        return null;
     }
 
     public void unsubscribe(String subscriptionName, AsyncResult request) {
@@ -97,68 +92,21 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
     }
 
     @Override
-    public void addChildResource(AmqpResource resource) {
-        if (resource instanceof AmqpConnectionSession) {
-            connectionSession = (AmqpConnectionSession) resource;
-        } else if (resource instanceof AmqpSession) {
-            AmqpSession session = (AmqpSession) resource;
-            sessions.put(session.getSessionId(), session);
-        } else if (resource instanceof AmqpTemporaryDestination) {
-            AmqpTemporaryDestination tempDest = (AmqpTemporaryDestination) resource;
-            tempDests.put(tempDest.getResourceInfo(), tempDest);
-        }
-    }
-
-    @Override
-    public void removeChildResource(AmqpResource resource) {
-        if (resource instanceof AmqpSession) {
-            AmqpSession session = (AmqpSession) resource;
-            sessions.remove(session.getSessionId());
-        } else if (resource instanceof AmqpTemporaryDestination) {
-            AmqpTemporaryDestination tempDest = (AmqpTemporaryDestination) resource;
-            tempDests.remove(tempDest.getResourceInfo());
-        }
-    }
-
-    @Override
-    public void handleResourceClosure(AmqpProvider provider, ProviderException cause) {
-        if (connectionSession != null) {
-            connectionSession.handleResourceClosure(getProvider(), cause);
-        }
-
-        List<AmqpSession> sessionList = new ArrayList<>(sessions.values());
-        for (AmqpSession session : sessionList) {
-            session.handleResourceClosure(provider, cause);
-        }
-
-        List<AmqpTemporaryDestination> tempDestsList = new ArrayList<>(tempDests.values());
-        for (AmqpTemporaryDestination tempDest : tempDestsList) {
-            tempDest.handleResourceClosure(provider, cause);
-        }
-    }
-
-    @Override
-    public void processRemoteClose(AmqpProvider provider) throws ProviderException {
-        getResourceInfo().setState(ResourceState.REMOTELY_CLOSED);
-
-        if (isAwaitingClose()) {
-            closeResource(provider, null, true); // Close was expected so ignore any endpoint errors.
-        } else {
-            // This will create a fatal level exception that stops the provider possibly triggering reconnect
-            ProviderConnectionRemotelyClosedException cause = AmqpSupport.convertToConnectionClosedException(
-                provider, getEndpoint(), getEndpoint().getRemoteCondition());
-
-            closeResource(provider, cause, true);
-        }
+    protected void processEndpointClosed() {
+        getEndpoint().sessions().forEach(session -> {
+            try {
+                if (session.getLinkedResource() != null) {
+                    session.getLinkedResource(AmqpSession.class).processParentEndpointClosed(this);
+                }
+            } catch (ClassCastException cse) {
+                // Unknown Session in Connection is a bit odd but could be opened session that is
+                // waiting for remote close response.
+            }
+        });
     }
 
     public URI getRemoteURI() {
         return remoteURI;
-    }
-
-    @Override
-    public AmqpProvider getProvider() {
-        return provider;
     }
 
     public String getQueuePrefix() {
@@ -189,7 +137,15 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
         if (sessionId.getProviderHint() instanceof AmqpSession) {
             return (AmqpSession) sessionId.getProviderHint();
         }
-        return sessions.get(sessionId);
+
+        for (Session session : getEndpoint().sessions()) {
+            AmqpSession amqpSession = session.getLinkedResource(AmqpSession.class);
+            if (amqpSession.getSessionId().equals(sessionId)) {
+                return amqpSession;
+            }
+        }
+
+        throw new IllegalArgumentException("Could not find matching AmqpSession for id: " + sessionId);
     }
 
     /**
@@ -199,6 +155,16 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
      */
     public AmqpConnectionSession getConnectionSession() {
         return connectionSession;
+    }
+
+    /**
+     * Sets the {@link AmqpConnectionSession} to use in this {@link AmqpConnection} instance.
+     *
+     * @param session
+     * 		The new {@link AmqpConnectionSession} instance to use.
+     */
+    public void setConnectionSession(AmqpConnectionSession session) {
+        this.connectionSession = session;
     }
 
     /**
@@ -298,5 +264,17 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
     @Override
     public String toString() {
         return "AmqpConnection { " + getResourceInfo().getId() + " }";
+    }
+
+    //----- Override remote close handling in base class for Connection specific error handling.
+
+    @Override
+    protected ProviderException createEndpointRemotelyClosedException() {
+        return AmqpSupport.convertToConnectionClosedException(getProvider(), getEndpoint().getRemoteCondition());
+    }
+
+    @Override
+    protected void signalEndpointRemotelyClosed() {
+        getProvider().fireProviderException(createEndpointRemotelyClosedException());
     }
 }

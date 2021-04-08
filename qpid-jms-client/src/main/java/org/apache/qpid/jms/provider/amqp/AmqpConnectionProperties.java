@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
-import org.apache.qpid.proton.amqp.Symbol;
+import org.apache.qpid.protonj2.types.Symbol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

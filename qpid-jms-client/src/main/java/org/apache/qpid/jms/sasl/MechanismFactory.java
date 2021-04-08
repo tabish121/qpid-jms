@@ -16,6 +16,8 @@
  */
 package org.apache.qpid.jms.sasl;
 
+import org.apache.qpid.protonj2.engine.sasl.client.Mechanism;
+
 /**
  * Interface for all SASL authentication mechanism implementations.
  */

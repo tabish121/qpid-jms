@@ -21,6 +21,7 @@ package org.apache.qpid.jms.test;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.qpid.proton.amqp.Symbol;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -29,11 +30,53 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class QpidJmsTestCase {
+
     public static final boolean IS_WINDOWS = System.getProperty("os.name", "unknown").toLowerCase().contains("windows");
 
     private final Logger _logger = LoggerFactory.getLogger(getClass());
 
     private final Map<String, String> _propertiesSetForTest = new HashMap<String, String>();
+
+    public static final Symbol SOLE_CONNECTION_CAPABILITY = Symbol.valueOf("sole-connection-for-container");
+    public static final Symbol ANONYMOUS_RELAY = Symbol.valueOf("ANONYMOUS-RELAY");
+    public static final Symbol DELAYED_DELIVERY = Symbol.valueOf("DELAYED_DELIVERY");
+    public static final Symbol SHARED_SUBS = Symbol.valueOf("SHARED-SUBS");
+    public static final Symbol ANONYMOUS = Symbol.valueOf("ANONYMOUS");
+    public static final Symbol PLAIN = Symbol.valueOf("PLAIN");
+    public static final Symbol CRAM_MD5 = Symbol.valueOf("CRAM-MD5");
+    public static final Symbol SCRAM_SHA_1 = Symbol.valueOf("SCRAM-SHA-1");
+    public static final Symbol SCRAM_SHA_256 = Symbol.valueOf("SCRAM-SHA-256");
+    public static final Symbol EXTERNAL = Symbol.valueOf("EXTERNAL");
+    public static final Symbol XOAUTH2 = Symbol.valueOf("XOAUTH2");
+
+    public static final Symbol CONNECTION_OPEN_FAILED = Symbol.valueOf("amqp:connection-establishment-failed");
+    public static final Symbol INVALID_FIELD_KEY = Symbol.valueOf("invalid-field");
+    public static final Symbol INVALID_FIELD = Symbol.valueOf("amqp:invalid-field");
+    public static final Symbol CONTAINER_ID = Symbol.valueOf("container-id");
+    public static final Symbol PATH = Symbol.valueOf("path");
+    public static final Symbol SCHEME = Symbol.valueOf("scheme");
+    public static final Symbol PORT = Symbol.valueOf("port");
+    public static final Symbol NETWORK_HOST = Symbol.valueOf("network-host");
+    public static final Symbol OPEN_HOSTNAME = Symbol.valueOf("hostname");
+    public static final Symbol DYNAMIC_NODE_LIFETIME_POLICY = Symbol.valueOf("lifetime-policy");
+    public static final Symbol PRODUCT = Symbol.valueOf("product");
+    public static final Symbol VERSION = Symbol.valueOf("version");
+    public static final Symbol PLATFORM = Symbol.valueOf("platform");
+
+    public static final Symbol JMS_DEST_TYPE_MSG_ANNOTATION_SYMBOL = Symbol.valueOf("x-opt-jms-dest");
+    public static final Symbol JMS_REPLY_TO_TYPE_MSG_ANNOTATION_SYMBOL = Symbol.valueOf("x-opt-jms-reply-to");
+    public static final Symbol QUEUE_CAPABILITY = Symbol.valueOf("queue");
+    public static final Symbol TOPIC_CAPABILITY = Symbol.valueOf("topic");
+    public static final Symbol TEMP_QUEUE_CAPABILITY = Symbol.valueOf("temporary-queue");
+    public static final Symbol TEMP_TOPIC_CAPABILITY = Symbol.valueOf("temporary-topic");
+    public static final Symbol QUEUE_PREFIX = Symbol.valueOf("queue-prefix");
+    public static final Symbol TOPIC_PREFIX = Symbol.valueOf("topic-prefix");
+
+    public static final Symbol SERIALIZED_JAVA_OBJECT_CONTENT_TYPE = Symbol.valueOf("application/x-java-serialized-object");
+    public static final Symbol OCTET_STREAM_CONTENT_TYPE = Symbol.valueOf("application/octet-stream");
+
+    public static final Symbol JMS_MSG_TYPE = Symbol.valueOf("x-opt-jms-msg-type");
+    public static final Symbol JMS_DELIVERY_TIME = Symbol.valueOf("x-opt-delivery-time");
 
     @Rule
     public TestName _testName = new TestName();

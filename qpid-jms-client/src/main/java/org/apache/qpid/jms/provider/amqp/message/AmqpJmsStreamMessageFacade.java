@@ -26,10 +26,10 @@ import javax.jms.MessageEOFException;
 
 import org.apache.qpid.jms.message.JmsStreamMessage;
 import org.apache.qpid.jms.message.facade.JmsStreamMessageFacade;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Section;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Section;
 
 /**
  * Wrapper around an AMQP Message instance that will be treated as a JMS StreamMessage
@@ -125,11 +125,11 @@ public class AmqpJmsStreamMessageFacade extends AmqpJmsMessageFacade implements 
 
     @SuppressWarnings("unchecked")
     @Override
-    void setBody(Section body) {
+    void setBody(Section<?> body) {
         if (body == null) {
             list = initializeEmptyBodyList(true);
         } else if (body instanceof AmqpValue) {
-            Object value = ((AmqpValue) body).getValue();
+            Object value = ((AmqpValue<Object>) body).getValue();
 
             if (value == null) {
                 list = initializeEmptyBodyList(false);
@@ -140,7 +140,7 @@ public class AmqpJmsStreamMessageFacade extends AmqpJmsMessageFacade implements 
                 throw new IllegalStateException("Unexpected amqp-value body content type: " + value.getClass().getSimpleName());
             }
         } else if (body instanceof AmqpSequence) {
-            List<?> value = ((AmqpSequence) body).getValue();
+            List<?> value = ((AmqpSequence<Object>) body).getValue();
 
             if (value == null) {
                 list = initializeEmptyBodyList(true);
@@ -157,9 +157,9 @@ public class AmqpJmsStreamMessageFacade extends AmqpJmsMessageFacade implements 
         List<Object> emptyList = new ArrayList<Object>();
 
         if (useSequenceBody) {
-            setBody(new AmqpSequence(emptyList));
+            setBody(new AmqpSequence<Object>(emptyList));
         } else {
-            setBody(new AmqpValue(emptyList));
+            setBody(new AmqpValue<Object>(emptyList));
         }
 
         return emptyList;

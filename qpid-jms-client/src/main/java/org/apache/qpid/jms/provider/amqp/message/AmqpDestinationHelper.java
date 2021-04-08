@@ -25,8 +25,8 @@ import org.apache.qpid.jms.JmsTemporaryQueue;
 import org.apache.qpid.jms.JmsTemporaryTopic;
 import org.apache.qpid.jms.JmsTopic;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
 
 /**
  * A set of static utility method useful when mapping JmsDestination types to / from the AMQP
@@ -232,21 +232,19 @@ public class AmqpDestinationHelper {
      *         supplied destination null or can't be classified
      */
     static byte toTypeAnnotation(JmsDestination destination) {
-        if (destination == null) {
-            return UNKNOWN_TYPE;
-        }
-
-        if (destination.isQueue()) {
-            if (destination.isTemporary()) {
-                return TEMP_QUEUE_TYPE;
-            } else {
-                return QUEUE_TYPE;
-            }
-        } else if (destination.isTopic()) {
-            if (destination.isTemporary()) {
-                return TEMP_TOPIC_TYPE;
-            } else {
-                return TOPIC_TYPE;
+        if (destination != null) {
+            if (destination.isQueue()) {
+                if (destination.isTemporary()) {
+                    return TEMP_QUEUE_TYPE;
+                } else {
+                    return QUEUE_TYPE;
+                }
+            } else if (destination.isTopic()) {
+                if (destination.isTemporary()) {
+                    return TEMP_TOPIC_TYPE;
+                } else {
+                    return TOPIC_TYPE;
+                }
             }
         }
 

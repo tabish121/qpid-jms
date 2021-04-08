@@ -26,9 +26,9 @@ import java.util.Map;
 
 import org.apache.qpid.jms.message.JmsMapMessage;
 import org.apache.qpid.jms.message.facade.JmsMapMessageFacade;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Section;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Section;
 
 /**
  * Wrapper around an AMQP Message instance that will be treated as a JMS MapMessage
@@ -109,11 +109,11 @@ public class AmqpJmsMapMessageFacade extends AmqpJmsMessageFacade implements Jms
 
     @SuppressWarnings("unchecked")
     @Override
-    void setBody(Section body) {
+    void setBody(Section<?> body) {
         if (body == null) {
             initializeEmptyBody();
         } else if (body instanceof AmqpValue) {
-            Object o = ((AmqpValue) body).getValue();
+            Object o = ((AmqpValue<Object>) body).getValue();
             if (o == null) {
                 initializeEmptyBody();
             } else if (o instanceof Map) {
@@ -132,6 +132,6 @@ public class AmqpJmsMapMessageFacade extends AmqpJmsMessageFacade implements Jms
         // Using LinkedHashMap because AMQP map equality considers order,
         // so we should behave in as predictable a manner as possible
         messageBodyMap = new LinkedHashMap<String, Object>();
-        super.setBody(new AmqpValue(messageBodyMap));
+        super.setBody(new AmqpValue<Map<String, Object>>(messageBodyMap));
     }
 }

@@ -29,9 +29,9 @@ import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpTransactionCoordinatorBuilder;
 import org.apache.qpid.jms.provider.exceptions.ProviderIllegalStateException;
 import org.apache.qpid.jms.provider.exceptions.ProviderTransactionRolledBackException;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.Accepted;
-import org.apache.qpid.proton.amqp.transaction.TransactionalState;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.Accepted;
+import org.apache.qpid.protonj2.types.transactions.TransactionalState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  * The Transaction will carry a JmsTransactionId while the Transaction is open, once a
  * transaction has been committed or rolled back the Transaction Id is cleared.
  */
-public class AmqpTransactionContext implements AmqpResourceParent {
+public class AmqpTransactionContext {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpTransactionContext.class);
 
@@ -101,7 +101,7 @@ public class AmqpTransactionContext implements AmqpResourceParent {
         if (coordinator == null || coordinator.isClosed()) {
             AmqpTransactionCoordinatorBuilder builder =
                 new AmqpTransactionCoordinatorBuilder(this, session.getResourceInfo());
-            builder.buildResource(new AsyncResult() {
+            builder.buildEndpoint(new AsyncResult() {
 
                 @Override
                 public void onSuccess() {
@@ -121,7 +121,7 @@ public class AmqpTransactionContext implements AmqpResourceParent {
                 public boolean isComplete() {
                     return request.isComplete();
                 }
-            });
+            }, resource -> this.coordinator = resource);
         } else {
             coordinator.declare(txId, declareCompletion);
         }
@@ -277,21 +277,6 @@ public class AmqpTransactionContext implements AmqpResourceParent {
 
     //----- Resource Parent implementation -----------------------------------//
 
-    @Override
-    public void addChildResource(AmqpResource resource) {
-        if (resource instanceof AmqpTransactionCoordinator) {
-            coordinator = (AmqpTransactionCoordinator) resource;
-        }
-    }
-
-    @Override
-    public void removeChildResource(AmqpResource resource) {
-        // We don't clear the coordinator link so that we can refer to it
-        // to check if the current TX has failed due to link closed during
-        // normal operations.
-    }
-
-    @Override
     public AmqpProvider getProvider() {
         return session.getProvider();
     }

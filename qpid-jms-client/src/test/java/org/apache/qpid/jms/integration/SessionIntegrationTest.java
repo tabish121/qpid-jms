@@ -18,7 +18,6 @@
  */
 package org.apache.qpid.jms.integration;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.ANONYMOUS_RELAY;
 import static org.hamcrest.Matchers.arrayContaining;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasEntry;
@@ -68,7 +67,6 @@ import org.apache.qpid.jms.JmsOperationTimedOutException;
 import org.apache.qpid.jms.JmsSession;
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.policy.JmsDefaultPrefetchPolicy;
-import org.apache.qpid.jms.provider.amqp.message.AmqpDestinationHelper;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.Wait;
 import org.apache.qpid.jms.test.testpeer.TestAmqpPeer;
@@ -889,6 +887,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                 tempTopic.delete();
                 fail("Should not be able to delete an in use temp destination");
             } catch (JMSException ex) {
+                LOG.info("Handled expected exception on Temp Destination delete while in use: {}", ex.getMessage());
             }
 
             testPeer.expectDetach(true, true, true);
@@ -958,18 +957,18 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             Destination dest = null;
             if (destType == Queue.class) {
                 dest = session.createQueue(destName);
-                nodeTypeCapability = AmqpDestinationHelper.QUEUE_CAPABILITY;
+                nodeTypeCapability = QUEUE_CAPABILITY;
             } else if (destType == Topic.class) {
                 dest = session.createTopic(destName);
-                nodeTypeCapability = AmqpDestinationHelper.TOPIC_CAPABILITY;
+                nodeTypeCapability = TOPIC_CAPABILITY;
             } else if (destType == TemporaryQueue.class) {
                 testPeer.expectTempQueueCreationAttach(destName);
                 dest = session.createTemporaryQueue();
-                nodeTypeCapability = AmqpDestinationHelper.TEMP_QUEUE_CAPABILITY;
+                nodeTypeCapability = TEMP_QUEUE_CAPABILITY;
             } else if (destType == TemporaryTopic.class) {
                 testPeer.expectTempTopicCreationAttach(destName);
                 dest = session.createTemporaryTopic();
-                nodeTypeCapability = AmqpDestinationHelper.TEMP_TOPIC_CAPABILITY;
+                nodeTypeCapability = TEMP_TOPIC_CAPABILITY;
             } else {
                 fail("unexpected type");
             }
@@ -1002,7 +1001,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             Topic destination = session.createTopic(topicName);
 
             testPeer.expectReceiverAttach(notNullValue(), notNullValue(), false, true, false, false, AmqpError.UNAUTHORIZED_ACCESS, "Destination is not readable");
-            testPeer.expectDetach(true, true, true);
+            testPeer.expectDetach(true, false, false);
 
             try {
                 session.createConsumer(destination);
@@ -1030,7 +1029,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             Topic destination = session.createTopic(topicName);
 
             testPeer.expectSenderAttach(notNullValue(), notNullValue(), true, false, true, 0L, AmqpError.UNAUTHORIZED_ACCESS, "Destination is not readable");
-            testPeer.expectDetach(true, true, true);
+            testPeer.expectDetach(true, false, false);
 
             try {
                 session.createProducer(destination);
@@ -1078,18 +1077,18 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             Destination dest = null;
             if (destType == Queue.class) {
                 dest = session.createQueue(destName);
-                nodeTypeCapability = AmqpDestinationHelper.QUEUE_CAPABILITY;
+                nodeTypeCapability = QUEUE_CAPABILITY;
             } else if (destType == Topic.class) {
                 dest = session.createTopic(destName);
-                nodeTypeCapability = AmqpDestinationHelper.TOPIC_CAPABILITY;
+                nodeTypeCapability = TOPIC_CAPABILITY;
             } else if (destType == TemporaryQueue.class) {
                 testPeer.expectTempQueueCreationAttach(destName);
                 dest = session.createTemporaryQueue();
-                nodeTypeCapability = AmqpDestinationHelper.TEMP_QUEUE_CAPABILITY;
+                nodeTypeCapability = TEMP_QUEUE_CAPABILITY;
             } else if (destType == TemporaryTopic.class) {
                 testPeer.expectTempTopicCreationAttach(destName);
                 dest = session.createTemporaryTopic();
-                nodeTypeCapability = AmqpDestinationHelper.TEMP_TOPIC_CAPABILITY;
+                nodeTypeCapability = TEMP_TOPIC_CAPABILITY;
             } else {
                 fail("unexpected type");
             }
@@ -1182,18 +1181,18 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             Destination dest = null;
             if (destType == Queue.class) {
                 dest = session.createQueue(destName);
-                nodeTypeCapability = AmqpDestinationHelper.QUEUE_CAPABILITY;
+                nodeTypeCapability = QUEUE_CAPABILITY;
             } else if (destType == Topic.class) {
                 dest = session.createTopic(destName);
-                nodeTypeCapability = AmqpDestinationHelper.TOPIC_CAPABILITY;
+                nodeTypeCapability = TOPIC_CAPABILITY;
             } else if (destType == TemporaryQueue.class) {
                 testPeer.expectTempQueueCreationAttach(destName);
                 dest = session.createTemporaryQueue();
-                nodeTypeCapability = AmqpDestinationHelper.TEMP_QUEUE_CAPABILITY;
+                nodeTypeCapability = TEMP_QUEUE_CAPABILITY;
             } else if (destType == TemporaryTopic.class) {
                 testPeer.expectTempTopicCreationAttach(destName);
                 dest = session.createTemporaryTopic();
-                nodeTypeCapability = AmqpDestinationHelper.TEMP_TOPIC_CAPABILITY;
+                nodeTypeCapability = TEMP_TOPIC_CAPABILITY;
             } else {
                 fail("unexpected type");
             }
@@ -2238,7 +2237,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             for (int i = 0; i < msgCount; i++) {
                 Message msg = messages.remove(rand.nextInt(msgCount - i));
 
-                int deliveryNumber =  msg.getIntProperty(TestAmqpPeer.MESSAGE_NUMBER) + 1;
+                int deliveryNumber = msg.getIntProperty(TestAmqpPeer.MESSAGE_NUMBER) + 1;
 
                 testPeer.expectDisposition(true, new AcceptedMatcher(), deliveryNumber, deliveryNumber);
 
@@ -2367,6 +2366,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             testPeer.expectDisposition(true, new ModifiedMatcher().withDeliveryFailed(equalTo(true)), 2, 2);
             testPeer.expectDetach(false, true, false);
+            // TODO: Durable consumer should release prefetch before sending detach
             testPeer.expectDisposition(true, new ReleasedMatcher(), 3, 3);
 
             subscriber.close();
@@ -2423,7 +2423,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectDisposition(true, new ModifiedMatcher().withDeliveryFailed(equalTo(true)), 1, 1);
             testPeer.expectDisposition(true, new ModifiedMatcher().withDeliveryFailed(equalTo(true)), 2, 2);
 
-            if(closeSession) {
+            if (closeSession) {
                 testPeer.expectEnd();
 
                 session.close();
@@ -2532,7 +2532,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             int deliveredAtAnyPoint = Math.max(deliverBeforeRecoverCount, deliverAfterRecoverCount);
 
             if (closeConsumer) {
-                if(deliverAfterRecoverCount > 0) {
+                if (deliverAfterRecoverCount > 0) {
                     // Remaining credit will be drained if there are delivered messages yet to be acknowledged or recovered again.
                     testPeer.expectLinkFlow(true, true, equalTo(UnsignedInteger.valueOf(JmsDefaultPrefetchPolicy.DEFAULT_QUEUE_PREFETCH - msgCount)));
                 }
@@ -2542,7 +2542,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                     testPeer.expectDisposition(true, new ModifiedMatcher().withDeliveryFailed(equalTo(true)), i, i);
                 }
 
-                if(deliverAfterRecoverCount > 0) {
+                if (deliverAfterRecoverCount > 0) {
                     // Any further remaining messages prefetched will be released.
                     for (int i = deliveredAtAnyPoint + 1; i <= msgCount; i++) {
                         testPeer.expectDisposition(true, new ReleasedMatcher(), i, i);
@@ -2561,7 +2561,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
                 testPeer.waitForAllHandlersToComplete(1000);
 
-                if(deliverAfterRecoverCount > 0) {
+                if (deliverAfterRecoverCount > 0) {
                     // When the session or connection is closed, outstanding delivered messages will have disposition sent.
                     for (int i = 1; i <= deliverAfterRecoverCount; i++) {
                         testPeer.expectDisposition(true, new ModifiedMatcher().withDeliveryFailed(equalTo(true)), i, i);
@@ -2576,7 +2576,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                 }
             }
 
-            if(closeSession) {
+            if (closeSession) {
                 testPeer.expectEnd();
 
                 session.close();
@@ -2660,7 +2660,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             testPeer.waitForAllHandlersToComplete(1000);
 
-            if(!consumeAllRecovered) {
+            if (!consumeAllRecovered) {
                 // Any message delivered+recovered before but not then delivered and acknowledged afterwards, will have
                 // disposition sent as consumer/session/connection is closed.
                 for (int i = acknowledgeAfterRecoverCount + 1; i <= deliverBeforeRecoverCount; i++) {
@@ -2668,7 +2668,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                 }
             }
 
-            if(closeConsumer) {
+            if (closeConsumer) {
                 testPeer.expectDetach(true,  true,  true);
 
                 // Dispositions sent by proton when the link is freed
@@ -2679,7 +2679,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                 consumer.close();
             }
 
-            if(closeSession) {
+            if (closeSession) {
                 testPeer.expectEnd();
 
                 session.close();

@@ -17,7 +17,7 @@
 package org.apache.qpid.jms.provider.exceptions;
 
 import org.apache.qpid.jms.provider.ProviderException;
-import org.apache.qpid.proton.amqp.messaging.Modified;
+import org.apache.qpid.protonj2.types.messaging.Modified;
 
 /**
  * Thrown when a send fails because the remote modified the delivery
@@ -41,10 +41,10 @@ public class ProviderDeliveryModifiedException extends ProviderException {
     }
 
     public boolean isDeliveryFailed() {
-        return modification.getDeliveryFailed() == null ? false : modification.getDeliveryFailed().booleanValue();
+        return modification.isDeliveryFailed();
     }
 
     public boolean isUndeliverableHere() {
-        return modification.getUndeliverableHere() == null ? false : modification.getUndeliverableHere().booleanValue();
+        return modification.isUndeliverableHere();
     }
 }

@@ -18,31 +18,14 @@ package org.apache.qpid.jms.provider.amqp;
 
 import org.apache.qpid.jms.message.JmsOutboundMessageDispatch;
 import org.apache.qpid.jms.meta.JmsProducerId;
-import org.apache.qpid.jms.meta.JmsProducerInfo;
 import org.apache.qpid.jms.provider.AsyncResult;
 import org.apache.qpid.jms.provider.ProviderException;
-import org.apache.qpid.proton.engine.Sender;
+import org.apache.qpid.protonj2.engine.Sender;
 
 /**
  * Base class for Producer instances.
  */
-public abstract class AmqpProducer extends AmqpAbstractResource<JmsProducerInfo, Sender> {
-
-    protected final AmqpSession session;
-    protected final AmqpConnection connection;
-    protected boolean presettle;
-    protected boolean delayedDeliverySupported;
-
-    public AmqpProducer(AmqpSession session, JmsProducerInfo info) {
-        this(session, info, null);
-    }
-
-    public AmqpProducer(AmqpSession session, JmsProducerInfo info, Sender endpoint) {
-        super(info, endpoint, session);
-
-        this.session = session;
-        this.connection = session.getConnection();
-    }
+public interface AmqpProducer extends AmqpEndpoint<Sender> {
 
     /**
      * Sends the given message
@@ -54,40 +37,21 @@ public abstract class AmqpProducer extends AmqpAbstractResource<JmsProducerInfo,
      *
      * @throws ProviderException if an error occurs sending the message
      */
-    public abstract void send(JmsOutboundMessageDispatch envelope, AsyncResult request) throws ProviderException;
+    void send(JmsOutboundMessageDispatch envelope, AsyncResult request) throws ProviderException;
 
     /**
      * @return true if this is an anonymous producer or false if fixed to a given destination.
      */
-    public abstract boolean isAnonymous();
+    boolean isAnonymous();
 
     /**
      * @return the JmsProducerId that was assigned to this AmqpProducer.
      */
-    public JmsProducerId getProducerId() {
-        return getResourceInfo().getId();
-    }
+    JmsProducerId getProducerId();
 
     /**
      * @return true if the producer should presettle all sent messages.
      */
-    public boolean isPresettle() {
-        return presettle;
-    }
+    boolean isPresettle();
 
-    /**
-     * Sets whether the producer will presettle all messages that it sends.  Sending
-     * presettled reduces the time it takes to send a message but increases the change
-     * of message loss should the connection drop during send.
-     *
-     * @param presettle
-     *        true if all messages are sent settled.
-     */
-    public void setPresettle(boolean presettle) {
-        this.presettle = presettle;
-    }
-
-    public void setDelayedDeliverySupported(boolean delayedDeliverySupported) {
-        this.delayedDeliverySupported = delayedDeliverySupported;
-    }
 }

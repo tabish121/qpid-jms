@@ -29,16 +29,18 @@ import javax.jms.JMSException;
 import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
 import org.apache.qpid.jms.message.JmsTextMessage;
 import org.apache.qpid.jms.message.facade.JmsTextMessageFacade;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.Section;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.Section;
 
 /**
  * Wrapper around an AMQP Message instance that will be treated as a JMS TextMessage
  * type.
  */
 public class AmqpJmsTextMessageFacade extends AmqpJmsMessageFacade implements JmsTextMessageFacade {
+
+    private static final AmqpValue<String> EMPTY_BODY = new AmqpValue<String>(null);
 
     private final Charset charset;
 
@@ -68,17 +70,17 @@ public class AmqpJmsTextMessageFacade extends AmqpJmsMessageFacade implements Jm
 
     @Override
     public String getText() throws JMSException {
-        Section body = getBody();
+        Section<?> body = getBody();
 
         if (body == null) {
             return null;
         } else if (body instanceof Data) {
             Data data = (Data) body;
-            if (data.getValue() == null || data.getValue().getLength() == 0) {
+            Binary payload = data.getBinary();
+            if (payload == null || payload.getLength() == 0) {
                 return "";
             } else {
-                Binary b = data.getValue();
-                ByteBuffer buf = ByteBuffer.wrap(b.getArray(), b.getArrayOffset(), b.getLength());
+                ByteBuffer buf = ByteBuffer.wrap(payload.getArray(), payload.getArrayOffset(), payload.getLength());
 
                 try {
                     CharBuffer chars = charset.newDecoder().decode(buf);
@@ -88,7 +90,7 @@ public class AmqpJmsTextMessageFacade extends AmqpJmsMessageFacade implements Jm
                 }
             }
         } else if (body instanceof AmqpValue) {
-            Object value = ((AmqpValue) body).getValue();
+            Object value = ((AmqpValue<?>) body).getValue();
 
             if (value == null || value instanceof String) {
                 return (String) value;
@@ -102,12 +104,12 @@ public class AmqpJmsTextMessageFacade extends AmqpJmsMessageFacade implements Jm
 
     @Override
     public void setText(String value) {
-        setBody(new AmqpValue(value));
+        setBody(new AmqpValue<String>(value));
     }
 
     @Override
     public void clearBody() {
-        setBody(new AmqpValue(null));
+        setBody(EMPTY_BODY);
     }
 
     @Override
@@ -130,6 +132,6 @@ public class AmqpJmsTextMessageFacade extends AmqpJmsMessageFacade implements Jm
 
     @Override
     protected void initializeEmptyBody() {
-        setBody(new AmqpValue(null));
+        setBody(EMPTY_BODY);
     }
 }

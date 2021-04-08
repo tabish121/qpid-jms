@@ -16,6 +16,8 @@
  */
 package org.apache.qpid.jms.provider.amqp;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -25,10 +27,10 @@ import java.util.concurrent.ScheduledFuture;
 
 import org.apache.qpid.jms.message.JmsOutboundMessageDispatch;
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
+import org.apache.qpid.jms.meta.JmsProducerId;
 import org.apache.qpid.jms.meta.JmsProducerInfo;
 import org.apache.qpid.jms.provider.AsyncResult;
 import org.apache.qpid.jms.provider.ProviderException;
-import org.apache.qpid.jms.provider.amqp.message.AmqpReadableBuffer;
 import org.apache.qpid.jms.provider.exceptions.ProviderDeliveryModifiedException;
 import org.apache.qpid.jms.provider.exceptions.ProviderDeliveryReleasedException;
 import org.apache.qpid.jms.provider.exceptions.ProviderExceptionSupport;
@@ -36,50 +38,61 @@ import org.apache.qpid.jms.provider.exceptions.ProviderIllegalStateException;
 import org.apache.qpid.jms.provider.exceptions.ProviderSendTimedOutException;
 import org.apache.qpid.jms.provider.exceptions.ProviderUnsupportedOperationException;
 import org.apache.qpid.jms.tracing.JmsTracer;
-import org.apache.qpid.proton.amqp.messaging.Modified;
-import org.apache.qpid.proton.amqp.messaging.Rejected;
-import org.apache.qpid.proton.amqp.transaction.TransactionalState;
-import org.apache.qpid.proton.amqp.transport.DeliveryState;
-import org.apache.qpid.proton.amqp.transport.DeliveryState.DeliveryStateType;
-import org.apache.qpid.proton.amqp.transport.ErrorCondition;
-import org.apache.qpid.proton.amqp.transport.SenderSettleMode;
-import org.apache.qpid.proton.engine.Delivery;
-import org.apache.qpid.proton.engine.Sender;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.engine.OutgoingDelivery;
+import org.apache.qpid.protonj2.engine.Sender;
+import org.apache.qpid.protonj2.engine.impl.ProtonDeliveryTagGenerator;
+import org.apache.qpid.protonj2.types.messaging.Modified;
+import org.apache.qpid.protonj2.types.messaging.Rejected;
+import org.apache.qpid.protonj2.types.transactions.TransactionalState;
+import org.apache.qpid.protonj2.types.transport.DeliveryState;
+import org.apache.qpid.protonj2.types.transport.DeliveryState.DeliveryStateType;
+import org.apache.qpid.protonj2.types.transport.ErrorCondition;
+import org.apache.qpid.protonj2.types.transport.SenderSettleMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.netty.buffer.ByteBuf;
 
 /**
  * AMQP Producer object that is used to manage JMS MessageProducer semantics.
  *
  * This Producer is fixed to a given JmsDestination and can only produce messages to it.
  */
-public class AmqpFixedProducer extends AmqpProducer {
+public class AmqpFixedProducer extends AmqpAbstractEndpoint<JmsProducerInfo, Sender> implements AmqpProducer {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpFixedProducer.class);
-    private static final byte[] EMPTY_BYTE_ARRAY = new byte[] {};
 
-    private final AmqpTransferTagGenerator tagGenerator = new AmqpTransferTagGenerator(true);
-    private final Map<Object, InFlightSend> sent = new LinkedHashMap<Object, InFlightSend>();
     private final Map<Object, InFlightSend> blocked = new LinkedHashMap<Object, InFlightSend>();
 
+    private final AmqpSession session;
     private final AmqpConnection connection;
     private final JmsTracer tracer;
 
-    public AmqpFixedProducer(AmqpSession session, JmsProducerInfo info, Sender sender) {
-        super(session, info, sender);
+    private boolean delayedDeliverySupported;
 
-        connection = session.getConnection();
-        tracer = connection.getResourceInfo().getTracer();
+    public AmqpFixedProducer(AmqpSession session, JmsProducerInfo info, Sender sender) {
+        super(session.getProvider(), info, sender);
+
+        this.session = session;
+        this.connection = session.getConnection();
+        this.tracer = connection.getResourceInfo().getTracer();
 
         delayedDeliverySupported = connection.getProperties().isDelayedDeliverySupported();
+
+        // Use a tag generator that will reuse old tags.  Later we might make this configurable.
+        if (sender.getSenderSettleMode() == SenderSettleMode.SETTLED) {
+            sender.setDeliveryTagGenerator(ProtonDeliveryTagGenerator.BUILTIN.EMPTY.createGenerator());
+        } else {
+            sender.setDeliveryTagGenerator(ProtonDeliveryTagGenerator.BUILTIN.POOLED.createGenerator());
+        }
+
+        sender.creditStateUpdateHandler(this::handleLinkCreditUpdate)
+              .deliveryStateUpdatedHandler(this::handleDeliveryUpdated);
     }
 
     @Override
     public void close(AsyncResult request) {
         // If any sends are held we need to wait for them to complete.
-        if (!blocked.isEmpty() || !sent.isEmpty()) {
+        if (!blocked.isEmpty() || getEndpoint().hasUnsettled()) {
             this.closeRequest = request;
             return;
         }
@@ -103,11 +116,10 @@ public class AmqpFixedProducer extends AmqpProducer {
                 LOG.trace("Holding Message send until credit is available.");
 
                 if (getSendTimeout() > JmsConnectionInfo.INFINITE) {
-                    send.requestTimeout = getParent().getProvider().scheduleRequestTimeout(send, getSendTimeout(), send);
+                    send.requestTimeout = getProvider().scheduleRequestTimeout(send, getSendTimeout(), send);
                 }
 
                 blocked.put(envelope.getMessageId(), send);
-                getParent().getProvider().pumpToProtonTransport(request);
             } else {
                 doSend(envelope, send);
             }
@@ -120,13 +132,28 @@ public class AmqpFixedProducer extends AmqpProducer {
         LOG.trace("Producer sending message: {}", envelope);
 
         boolean presettle = envelope.isPresettle() || isPresettle();
-        Delivery delivery = null;
+        OutgoingDelivery delivery = getEndpoint().next();
 
+        // Link the two delivery containers for later reconciliation
+        send.setDelivery(delivery);
+        delivery.setLinkedResource(send);
+
+        // For pre-settled messages we can just mark as successful and we are done, but
+        // for any other message we still track it until the remote settles.  If the send
+        // was tagged as asynchronous we must mark the original request as complete but
+        // we still need to wait for the disposition before we can consider the send as
+        // having been successful.
         if (presettle) {
-            delivery = getEndpoint().delivery(EMPTY_BYTE_ARRAY, 0, 0);
+            send.onSuccess();
+            delivery.settle();
         } else {
-            byte[] tag = tagGenerator.getNextTag();
-            delivery = getEndpoint().delivery(tag, 0, tag.length);
+            if (envelope.isSendAsync()) {
+                send.getOriginalRequest().onSuccess();
+            }
+
+            if (getSendTimeout() != JmsConnectionInfo.INFINITE && send.requestTimeout == null) {
+                send.requestTimeout = getProvider().scheduleRequestTimeout(send, getSendTimeout(), send);
+            }
         }
 
         if (session.isTransacted()) {
@@ -135,51 +162,13 @@ public class AmqpFixedProducer extends AmqpProducer {
             context.registerTxProducer(this);
         }
 
-        // Write the already encoded AMQP message into the Sender
-        ByteBuf encoded = (ByteBuf) envelope.getPayload();
-        getEndpoint().sendNoCopy(new AmqpReadableBuffer(encoded.duplicate()));
-
-        AmqpProvider provider = getParent().getProvider();
-
-        if (!presettle && getSendTimeout() != JmsConnectionInfo.INFINITE && send.requestTimeout == null) {
-            send.requestTimeout = getParent().getProvider().scheduleRequestTimeout(send, getSendTimeout(), send);
-        }
-
-        if (presettle) {
-            delivery.settle();
-        } else {
-            sent.put(envelope.getMessageId(), send);
-            getEndpoint().advance();
-        }
-
-        send.setDelivery(delivery);
-        delivery.setContext(send);
-
-        // Put it on the wire and let it fail if the connection is broken, if it does
-        // get written then continue on to determine when we should complete it.
-        if (provider.pumpToProtonTransport(send, false)) {
-            // For presettled messages we can just mark as successful and we are done, but
-            // for any other message we still track it until the remote settles.  If the send
-            // was tagged as asynchronous we must mark the original request as complete but
-            // we still need to wait for the disposition before we can consider the send as
-            // having been successful.
-            if (presettle) {
-                send.onSuccess();
-            } else if (envelope.isSendAsync()) {
-                send.getOriginalRequest().onSuccess();
-            }
-
-            try {
-                provider.getTransport().flush();
-            } catch (Throwable ex) {
-                throw ProviderExceptionSupport.createOrPassthroughFatal(ex);
-            }
-        }
+        // All delivery updates are done before this point so that the Transfer holds all
+        // state data and no additional Disposition needs to be emitted.
+        delivery.writeBytes((ProtonBuffer) envelope.getPayload());
     }
 
-    @Override
-    public void processFlowUpdates(AmqpProvider provider) throws ProviderException {
-        if (!blocked.isEmpty() && getEndpoint().getCredit() > 0) {
+    protected void handleLinkCreditUpdate(Sender sender) {
+        if (!blocked.isEmpty() && getEndpoint().isSendable()) {
             Iterator<InFlightSend> blockedSends = blocked.values().iterator();
             while (getEndpoint().getCredit() > 0 && blockedSends.hasNext()) {
                 LOG.trace("Dispatching previously held send");
@@ -193,25 +182,24 @@ public class AmqpFixedProducer extends AmqpProducer {
                     }
 
                     doSend(held.getEnvelope(), held);
+                } catch (ProviderException e) {
+                    // TODO: Investigate how this is handled.
+                    throw new UncheckedIOException(new IOException(e));
                 } finally {
                     blockedSends.remove();
                 }
             }
         }
 
-        // If a drain was requested, we just sent what we had so respond with drained
-        if (getEndpoint().getDrain()) {
+        if (blocked.isEmpty() && getEndpoint().isDraining()) {
             getEndpoint().drained();
         }
-
-        super.processFlowUpdates(provider);
     }
 
-    @Override
-    public void processDeliveryUpdates(AmqpProvider provider, Delivery delivery) throws ProviderException {
+    protected void handleDeliveryUpdated(OutgoingDelivery delivery) {
         DeliveryState state = delivery.getRemoteState();
         if (state != null) {
-            InFlightSend send = (InFlightSend) delivery.getContext();
+            InFlightSend send = (InFlightSend) delivery.getLinkedResource();
 
             if (state.getType() == DeliveryStateType.Accepted) {
                 LOG.trace("Outcome of delivery was accepted: {}", delivery);
@@ -220,11 +208,9 @@ public class AmqpFixedProducer extends AmqpProducer {
                 applyDeliveryStateUpdate(send, delivery, state);
             }
         }
-
-        super.processDeliveryUpdates(provider, delivery);
     }
 
-    private void applyDeliveryStateUpdate(InFlightSend send, Delivery delivery, DeliveryState state) {
+    private void applyDeliveryStateUpdate(InFlightSend send, OutgoingDelivery delivery, DeliveryState state) {
         ProviderException deliveryError = null;
         if (state == null) {
             return;
@@ -246,7 +232,7 @@ public class AmqpFixedProducer extends AmqpProducer {
                     remoteError = getEndpoint().getRemoteCondition();
                 }
 
-                deliveryError = AmqpSupport.convertToNonFatalException(getParent().getProvider(), getEndpoint(), remoteError);
+                deliveryError = AmqpSupport.convertToNonFatalException(getProvider(), remoteError);
                 break;
             case Released:
                 LOG.trace("Outcome of delivery was released: {}", delivery);
@@ -266,8 +252,13 @@ public class AmqpFixedProducer extends AmqpProducer {
         }
     }
 
-    public AmqpSession getSession() {
-        return session;
+    @Override
+    public JmsProducerId getProducerId() {
+        return getResourceInfo().getId();
+    }
+
+    public void setDelayedDeliverySupported(boolean delayedDeliverySupported) {
+        this.delayedDeliverySupported = delayedDeliverySupported;
     }
 
     @Override
@@ -280,33 +271,30 @@ public class AmqpFixedProducer extends AmqpProducer {
         return getEndpoint().getSenderSettleMode() == SenderSettleMode.SETTLED;
     }
 
-    public long getSendTimeout() {
-        return getParent().getProvider().getSendTimeout();
-    }
-
     @Override
     public String toString() {
         return "AmqpFixedProducer { " + getProducerId() + " }";
     }
 
     @Override
-    public void handleResourceClosure(AmqpProvider provider, ProviderException error) {
+    protected void processEndpointClosed() {
+        ProviderException error = getFailureCause();
         if (error == null) {
-            // In case close was expected but remote did provide error context we propagate that to the outstanding
-            // sends that will be failed in order to provide more specific context to the send failure.
-            if (getEndpoint().getRemoteCondition() != null) {
-                error = AmqpSupport.convertToNonFatalException(provider, getEndpoint(), getEndpoint().getRemoteCondition());
+            // Producer might be awaiting a close in which case we won't signal failure to the close
+            // caller but we should use the most appropriate error for failing the sends so we need
+            // to check here if there a remote error and use that or create a descriptive error.
+            if (hasRemoteError()) {
+                error = createEndpointRemotelyClosedException();
             } else {
                 error = new ProviderException("Producer closed remotely before message transfer result was notified");
             }
         }
 
-        Collection<InFlightSend> inflightSends = new ArrayList<InFlightSend>(sent.values());
-        for (InFlightSend send : inflightSends) {
+        for (OutgoingDelivery delivery : getEndpoint().unsettled()) {
             try {
-                send.onFailure(error);
+                delivery.getLinkedResource(InFlightSend.class).onFailure(error);
             } catch (Exception e) {
-                LOG.debug("Caught exception when failing pending send during remote producer closure: {}", send, e);
+                LOG.debug("Caught exception when failing pending send during remote producer closure: {}", delivery, e);
             }
         }
 
@@ -320,6 +308,10 @@ public class AmqpFixedProducer extends AmqpProducer {
         }
     }
 
+    private long getSendTimeout() {
+        return getProvider().getSendTimeout();
+    }
+
     //----- Class used to manage held sends ----------------------------------//
 
     private final class InFlightSend implements AsyncResult, AmqpExceptionBuilder {
@@ -327,7 +319,7 @@ public class AmqpFixedProducer extends AmqpProducer {
         private final JmsOutboundMessageDispatch envelope;
         private final AsyncResult request;
 
-        private Delivery delivery;
+        private OutgoingDelivery delivery;
         private ScheduledFuture<?> requestTimeout;
 
         public InFlightSend(JmsOutboundMessageDispatch envelope, AsyncResult request) {
@@ -343,9 +335,9 @@ public class AmqpFixedProducer extends AmqpProducer {
                 // Asynchronous sends can still be awaiting a completion in which case we
                 // send to them otherwise send to the listener to be reported.
                 if (envelope.isCompletionRequired()) {
-                    getParent().getProvider().getProviderListener().onFailedMessageSend(envelope, ProviderExceptionSupport.createNonFatalOrPassthrough(cause));
+                    getProvider().getProviderListener().onFailedMessageSend(envelope, ProviderExceptionSupport.createNonFatalOrPassthrough(cause));
                 } else {
-                    getParent().getProvider().fireNonFatalProviderException(ProviderExceptionSupport.createNonFatalOrPassthrough(cause));
+                    getProvider().fireNonFatalProviderException(ProviderExceptionSupport.createNonFatalOrPassthrough(cause));
                 }
             } else {
                 request.onFailure(cause);
@@ -361,7 +353,7 @@ public class AmqpFixedProducer extends AmqpProducer {
             }
 
             if (envelope.isCompletionRequired()) {
-                getParent().getProvider().getProviderListener().onCompletedMessageSend(envelope);
+                getProvider().getProviderListener().onCompletedMessageSend(envelope);
             }
         }
 
@@ -381,11 +373,11 @@ public class AmqpFixedProducer extends AmqpProducer {
             return request;
         }
 
-        public void setDelivery(Delivery delivery) {
+        public void setDelivery(OutgoingDelivery delivery) {
             this.delivery = delivery;
         }
 
-        public Delivery getDelivery() {
+        public OutgoingDelivery getDelivery() {
             return delivery;
         }
 
@@ -397,14 +389,21 @@ public class AmqpFixedProducer extends AmqpProducer {
         private void handleSendCompletion(boolean successful) {
             setRequestTimeout(null);
 
-            // Null delivery means that we never had credit to send so no delivery was created to carry the message.
-            if (getDelivery() != null) {
-                sent.remove(envelope.getMessageId());
+            final OutgoingDelivery delivery = getDelivery();
+
+            // Null delivery means that we never had credit to send so no delivery was created to carry the message
+            // but it would be cached in the blocked delivery map so we need to remove it now.
+            if (delivery != null && delivery.getLink().isLocallyOpen()) {
+                // TODO: This could throw since it can write a settlement so we need to handle this
+                //       differently than we did when proton did temporal squashing of work.
                 delivery.settle();
-                if (successful) {
-                    tagGenerator.returnTag(delivery.getTag());
-                }
-                final DeliveryState remoteState = delivery.getRemoteState();
+            } else {
+                blocked.remove(envelope.getMessageId());
+            }
+
+            // Null delivery means that we never had credit to send so no delivery was created to carry the message.
+            if (delivery != null) {
+                DeliveryState remoteState = delivery.getRemoteState();
                 tracer.completeSend(envelope.getMessage().getFacade(), remoteState == null ? null : remoteState.getType().name());
             } else {
                 blocked.remove(envelope.getMessageId());
@@ -416,7 +415,7 @@ public class AmqpFixedProducer extends AmqpProducer {
 
             // Once the pending sends queue is drained and all in-flight sends have been
             // settled we can propagate the close request.
-            if (isAwaitingClose() && !isClosed() && blocked.isEmpty() && sent.isEmpty()) {
+            if (isAwaitingRemoteClose() && !isClosed() && blocked.isEmpty() && !getEndpoint().hasUnsettled()) {
                 AmqpFixedProducer.super.close(closeRequest);
             }
         }

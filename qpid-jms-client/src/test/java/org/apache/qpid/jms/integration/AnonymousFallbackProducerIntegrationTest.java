@@ -198,6 +198,9 @@ public class AnonymousFallbackProducerIntegrationTest extends QpidJmsTestCase {
                 // Expected if remote close beat the send to the provider
             } catch (IllegalStateException ise) {
                 // Can happen if send fires before remote close if processed.
+            } catch (Exception unexpeced) {
+                LOG.error("Caught unexpected error from produer send: ", unexpeced);
+                throw unexpeced;
             }
 
             connection.close();
@@ -843,7 +846,7 @@ public class AnonymousFallbackProducerIntegrationTest extends QpidJmsTestCase {
     }
 
     @Repeat(repetitions = 1)
-    @Test(timeout = 60000)
+    @Test(timeout = 20000)
     public void testRepeatedSendToSameAddressWhenCacheSizeOfOneKeepsFallbackProducerInCache() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
 

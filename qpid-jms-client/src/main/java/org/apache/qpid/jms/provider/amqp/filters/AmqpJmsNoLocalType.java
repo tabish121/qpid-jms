@@ -16,8 +16,8 @@
  */
 package org.apache.qpid.jms.provider.amqp.filters;
 
-import org.apache.qpid.proton.amqp.DescribedType;
-import org.apache.qpid.proton.amqp.UnsignedLong;
+import org.apache.qpid.protonj2.types.DescribedType;
+import org.apache.qpid.protonj2.types.UnsignedLong;
 
 /**
  * A Described Type wrapper for JMS no local option for MessageConsumer.

@@ -46,6 +46,9 @@ import org.apache.qpid.jms.transports.TransportOptions;
 import org.apache.qpid.jms.util.QpidJMSTestRunner;
 import org.apache.qpid.jms.util.QpidJMSThreadFactory;
 import org.apache.qpid.jms.util.Repeat;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonByteBufferAllocator;
+import org.apache.qpid.protonj2.buffer.ProtonNettyByteBuffer;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -74,8 +77,8 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
     private static final int SEND_BYTE_COUNT = 1024;
 
     protected boolean transportClosed;
-    protected final List<Throwable> exceptions = new ArrayList<Throwable>();
-    protected final List<ByteBuf> data = new ArrayList<ByteBuf>();
+    protected final List<Throwable> exceptions = new ArrayList<>();
+    protected final List<ProtonBuffer> data = new ArrayList<>();
     protected final AtomicInteger bytesRead = new AtomicInteger();
 
     protected final TransportListener testListener = new NettyTransportListener(false);
@@ -303,7 +306,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
                 Transport transport = createTransport(serverLocation, testListener, createClientOptions());
                 try {
                     transport.connect(null, null);
-                    transport.writeAndFlush(sendBuffer.copy());
+                    transport.writeAndFlush(new ProtonNettyByteBuffer(sendBuffer.copy()));
                     transports.add(transport);
                 } catch (Exception e) {
                     fail("Should have connected to the server at " + serverLocation + " but got exception: " + e);
@@ -384,7 +387,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             assertTrue(transport.isConnected());
 
-            transport.writeAndFlush(Unpooled.buffer(0));
+            transport.writeAndFlush(new ProtonNettyByteBuffer(Unpooled.buffer(0)));
 
             transport.close();
         }
@@ -412,7 +415,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             assertTrue(transport.isConnected());
 
-            ByteBuf sendBuffer = transport.allocateSendBuffer(SEND_BYTE_COUNT);
+            ProtonBuffer sendBuffer = ProtonByteBufferAllocator.DEFAULT.allocate(SEND_BYTE_COUNT);
             for (int i = 0; i < SEND_BYTE_COUNT; ++i) {
                 sendBuffer.writeByte('A');
             }
@@ -426,7 +429,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
                 }
             }, 10000, 50));
 
-            assertEquals(SEND_BYTE_COUNT, data.get(0).readableBytes());
+            assertEquals(SEND_BYTE_COUNT, data.get(0).getReadableBytes());
 
             transport.close();
         }
@@ -469,7 +472,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             }
 
             for (int i = 0; i < iterations; ++i) {
-                transport.writeAndFlush(sendBuffer.copy());
+                transport.writeAndFlush(new ProtonNettyByteBuffer(sendBuffer.copy()));
             }
 
             assertTrue(Wait.waitFor(new Wait.Condition() {
@@ -510,7 +513,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             ByteBuf sendBuffer = Unpooled.buffer(10);
             try {
-                transport.writeAndFlush(sendBuffer);
+                transport.writeAndFlush(new ProtonNettyByteBuffer(sendBuffer));
                 fail("Should throw on send of closed transport");
             } catch (IOException ex) {
             }
@@ -604,7 +607,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
                 transport.close();
 
                 try {
-                    transport.writeAndFlush(sendBuffer);
+                    transport.writeAndFlush(new ProtonNettyByteBuffer(sendBuffer));
                     fail("Should throw on send of closed transport");
                 } catch (IOException ex) {
                 }
@@ -850,13 +853,13 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
         }
 
         @Override
-        public void onData(ByteBuf incoming) {
-            LOG.debug("Client has new incoming data of size: {}", incoming.readableBytes());
+        public void onData(ProtonBuffer incoming) {
+            LOG.debug("Client has new incoming data of size: {}", incoming.getReadableBytes());
             data.add(incoming);
-            bytesRead.addAndGet(incoming.readableBytes());
+            bytesRead.addAndGet(incoming.getReadableBytes());
 
-            if(retainDataBufs) {
-                incoming.retain();
+            if (retainDataBufs) {
+                ((ByteBuf) incoming.unwrap()).retain();
             }
         }
 

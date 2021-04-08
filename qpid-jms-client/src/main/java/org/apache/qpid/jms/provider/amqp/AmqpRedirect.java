@@ -24,6 +24,7 @@ import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SCHEME;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -32,7 +33,7 @@ import org.apache.qpid.jms.transports.TransportFactory;
 import org.apache.qpid.jms.util.FactoryFinder;
 import org.apache.qpid.jms.util.PropertyUtil;
 import org.apache.qpid.jms.util.URISupport;
-import org.apache.qpid.proton.amqp.Symbol;
+import org.apache.qpid.protonj2.types.Symbol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,7 +52,7 @@ public class AmqpRedirect {
     private final AmqpProvider provider;
 
     public AmqpRedirect(Map<Symbol, Object> redirect, AmqpProvider provider) {
-        this.redirect = redirect;
+        this.redirect = new HashMap<>(redirect);
         this.provider = provider;
 
         if (provider == null) {

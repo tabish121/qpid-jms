@@ -20,6 +20,21 @@
  */
 package org.apache.qpid.jms.integration;
 
+import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
+
+import java.io.File;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import javax.jms.Connection;
+import javax.jms.ConnectionFactory;
+import javax.jms.JMSSecurityException;
+
 import org.apache.directory.server.kerberos.shared.keytab.Keytab;
 import org.apache.directory.server.kerberos.shared.keytab.KeytabEntry;
 import org.apache.hadoop.minikdc.MiniKdc;
@@ -35,28 +50,12 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSSecurityException;
-import java.io.File;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.fail;
-
 public class SaslGssApiIntegrationTest extends QpidJmsTestCase {
 
     private static final Logger LOG = LoggerFactory.getLogger(SaslGssApiIntegrationTest.class);
 
     private static final String LOGIN_CONFIG = "SaslGssApiIntegrationTest-login.config";
     private static final String GSSAPI = "GSSAPI";
-    private static final Symbol ANONYMOUS = Symbol.valueOf("ANONYMOUS");
-    private static final Symbol PLAIN = Symbol.valueOf("PLAIN");
     private static final String KRB5_KEYTAB = "target/SaslGssApiIntegrationTest.krb5.keytab";
     private static final String CLIENT_PRINCIPAL_LOGIN_CONFIG = "clientprincipal";
     private static final String CLIENT_PRINCIPAL_FACTORY_USERNAME = "factoryusername";

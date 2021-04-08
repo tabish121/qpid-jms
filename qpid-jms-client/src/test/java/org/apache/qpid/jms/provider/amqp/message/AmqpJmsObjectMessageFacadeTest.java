@@ -34,12 +34,11 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Section;
-import org.apache.qpid.proton.message.Message;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Section;
 import org.junit.Test;
 
 /**
@@ -121,10 +120,10 @@ public class AmqpJmsObjectMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
         byte[] bytes = baos.toByteArray();
 
         // retrieve the bytes from the underlying message, check they match expectation
-        Section section = amqpObjectMessageFacade.getBody();
+        Section<?> section = amqpObjectMessageFacade.getBody();
         assertNotNull(section);
         assertEquals(Data.class, section.getClass());
-        assertArrayEquals("Underlying message data section did not contain the expected bytes", bytes, ((Data) section).getValue().getArray());
+        assertArrayEquals("Underlying message data section did not contain the expected bytes", bytes, ((Data) section).getBinary().getArray());
     }
 
     /**
@@ -141,10 +140,10 @@ public class AmqpJmsObjectMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
         amqpObjectMessageFacade.setObject(content);
 
         // retrieve the body from the underlying message, check it matches expectation
-        Section section = amqpObjectMessageFacade.getBody();
+        Section<?> section = amqpObjectMessageFacade.getBody();
         assertNotNull(section);
         assertEquals(AmqpValue.class, section.getClass());
-        assertEquals("Underlying message body did not contain the expected content", content, ((AmqpValue) section).getValue());
+        assertEquals("Underlying message body did not contain the expected content", content, ((AmqpValue<?>) section).getValue());
     }
 
     /**
@@ -155,11 +154,11 @@ public class AmqpJmsObjectMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
      */
     @Test
     public void testSetObjectWithNullClearsExistingBodySection() throws Exception {
-        Message protonMessage = Message.Factory.create();
-        protonMessage.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
-        protonMessage.setBody(new Data(new Binary(new byte[0])));
+        final AmqpMessage message = new AmqpMessage();
+        message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
+        message.body(new Data(new Binary(new byte[0])));
 
-        AmqpJmsObjectMessageFacade amqpObjectMessageFacade = createReceivedObjectMessageFacade(createMockAmqpConsumer(), protonMessage);
+        AmqpJmsObjectMessageFacade amqpObjectMessageFacade = createReceivedObjectMessageFacade(createMockAmqpConsumer(), message);
 
         assertNotNull("Expected existing body section to be found", amqpObjectMessageFacade.getBody());
         amqpObjectMessageFacade.setObject(null);
@@ -175,11 +174,11 @@ public class AmqpJmsObjectMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
      */
     @Test
     public void testClearBodyWithExistingSerializedBodySection() throws Exception {
-        Message protonMessage = Message.Factory.create();
-        protonMessage.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
-        protonMessage.setBody(new Data(new Binary(new byte[0])));
+        final AmqpMessage message = new AmqpMessage();
+        message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
+        message.body(new Data(new Binary(new byte[0])));
 
-        AmqpJmsObjectMessageFacade amqpObjectMessageFacade = createReceivedObjectMessageFacade(createMockAmqpConsumer(), protonMessage);
+        AmqpJmsObjectMessageFacade amqpObjectMessageFacade = createReceivedObjectMessageFacade(createMockAmqpConsumer(), message);
 
         assertNotNull("Expected existing body section to be found", amqpObjectMessageFacade.getBody());
         amqpObjectMessageFacade.clearBody();
@@ -236,9 +235,9 @@ public class AmqpJmsObjectMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
     }
 
     private void doGetObjectUsingReceivedMessageWithNoBodySectionReturnsNullTestImpl(boolean amqpTyped) throws IOException, ClassNotFoundException {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         if (!amqpTyped) {
-            message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
+            message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
         }
         AmqpJmsObjectMessageFacade amqpObjectMessageFacade = createReceivedObjectMessageFacade(createMockAmqpConsumer(), message);
 
@@ -247,9 +246,9 @@ public class AmqpJmsObjectMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testGetObjectUsingReceivedMessageWithDataSectionContainingNothingReturnsNull() throws Exception {
-        Message message = Message.Factory.create();
-        message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
-        message.setBody(new Data(null));
+        final AmqpMessage message = new AmqpMessage();
+        message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
+        message.body(new Data((Binary) null));
 
         AmqpJmsObjectMessageFacade amqpObjectMessageFacade = createReceivedObjectMessageFacade(createMockAmqpConsumer(), message);
 
@@ -258,9 +257,9 @@ public class AmqpJmsObjectMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testGetObjectUsingReceivedMessageWithNonDataNonAmqvValueBinarySectionThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
-        message.setBody(new AmqpValue("nonBinarySectionContent"));
+        final AmqpMessage message = new AmqpMessage();
+        message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
+        message.body(new AmqpValue<String>("nonBinarySectionContent"));
 
         AmqpJmsObjectMessageFacade amqpObjectMessageFacade = createReceivedObjectMessageFacade(createMockAmqpConsumer(), message);
 
@@ -294,12 +293,12 @@ public class AmqpJmsObjectMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
         HashMap<String, String> origMap = new HashMap<String, String>();
         origMap.put("key1", "value1");
 
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         if (contentType) {
-            message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
-            message.setBody(new Data(new Binary(getSerializedBytes(origMap))));
+            message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
+            message.body(new Data(new Binary(getSerializedBytes(origMap))));
         } else {
-            message.setBody(new AmqpValue(origMap));
+            message.body(new AmqpValue<Map<String, String>>(origMap));
         }
         AmqpJmsObjectMessageFacade amqpObjectMessageFacade = createReceivedObjectMessageFacade(createMockAmqpConsumer(), message);
 

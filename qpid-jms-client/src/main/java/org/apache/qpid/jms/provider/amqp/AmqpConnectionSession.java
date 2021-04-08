@@ -20,21 +20,20 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.apache.qpid.jms.meta.JmsSessionInfo;
 import org.apache.qpid.jms.provider.AsyncResult;
 import org.apache.qpid.jms.provider.NoOpAsyncResult;
 import org.apache.qpid.jms.provider.ProviderException;
-import org.apache.qpid.jms.provider.WrappedAsyncResult;
-import org.apache.qpid.jms.provider.amqp.builders.AmqpResourceBuilder;
-import org.apache.qpid.jms.provider.exceptions.ProviderExceptionSupport;
+import org.apache.qpid.jms.provider.amqp.builders.AmqpEndpointBuilder;
 import org.apache.qpid.jms.provider.exceptions.ProviderInvalidDestinationException;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.Target;
-import org.apache.qpid.proton.amqp.transport.ReceiverSettleMode;
-import org.apache.qpid.proton.amqp.transport.SenderSettleMode;
-import org.apache.qpid.proton.engine.Receiver;
-import org.apache.qpid.proton.engine.Session;
+import org.apache.qpid.protonj2.engine.Receiver;
+import org.apache.qpid.protonj2.engine.Session;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.Target;
+import org.apache.qpid.protonj2.types.transport.ReceiverSettleMode;
+import org.apache.qpid.protonj2.types.transport.SenderSettleMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,70 +75,77 @@ public class AmqpConnectionSession extends AmqpSession {
         AmqpSubscriptionTracker subTracker = getConnection().getSubTracker();
         String linkName = subTracker.getFirstDurableSubscriptionLinkName(subscriptionName, hasClientID);
 
-        DurableSubscriptionReattachBuilder builder = new DurableSubscriptionReattachBuilder(this, getResourceInfo(), linkName);
-        DurableSubscriptionReattachRequest subscribeRequest = new DurableSubscriptionReattachRequest(subscriptionName, builder, request);
-        pendingUnsubs.put(subscriptionName, subscribeRequest);
+        DurableSubscriptionReattachBuilder builder =
+            new DurableSubscriptionReattachBuilder(this, getResourceInfo(), linkName, subscriptionName);
+
+        // Store in case the session is closed before this resource creation request is
+        // answered by the remote.
+        pendingUnsubs.put(subscriptionName, builder);
 
         LOG.debug("Attempting remove of subscription: {}", subscriptionName);
-        builder.buildResource(subscribeRequest);
+        builder.buildEndpoint(request);
     }
 
     @Override
-    public void addChildResource(AmqpResource resource) {
-        // When a Connection Consumer is created the Connection is doing so
-        // without a known session to associate it with, we link up the consumer
-        // to this session by adding this session as the provider hint on the
-        // consumer's parent session ID.
-        if (resource instanceof AmqpConsumer) {
-            AmqpConsumer consumer = (AmqpConsumer) resource;
-            consumer.getConsumerId().getParentId().setProviderHint(this);
+    public void processEndpointClosed() {
+        ProviderException cause = getFailureCause();
+        if (cause == null) {
+            cause = createEndpointRemotelyClosedException();
         }
 
-        super.addChildResource(resource);
-    }
-
-    @Override
-    public void handleResourceClosure(AmqpProvider provider, ProviderException cause) {
         List<AsyncResult> pending = new ArrayList<>(pendingUnsubs.values());
         for (AsyncResult unsubscribeRequest : pending) {
             unsubscribeRequest.onFailure(cause);
         }
 
-        super.handleResourceClosure(provider, cause);
+        super.processEndpointClosed();
     }
 
-    private static final class DurableSubscriptionReattach extends AmqpAbstractResource<JmsSessionInfo, Receiver> {
+    private static final class DurableSubscriptionReattach extends AmqpAbstractEndpoint<JmsSessionInfo, Receiver> {
 
-        public DurableSubscriptionReattach(JmsSessionInfo resource, Receiver receiver, AmqpResourceParent parent) {
-            super(resource, receiver, parent);
+        public DurableSubscriptionReattach(AmqpSession session, JmsSessionInfo resource, Receiver receiver) {
+            super(session.getProvider(), resource, receiver);
         }
 
         @Override
-        public void processRemoteClose(AmqpProvider provider) throws ProviderException {
+        public void processEndpointClosed() {
             // For unsubscribe we care if the remote signaled an error on the close since
             // that would indicate that the unsubscribe did not succeed and we want to throw
             // that from the unsubscribe call.
-            if (getEndpoint().getRemoteCondition().getCondition() != null) {
-                closeResource(provider, AmqpSupport.convertToNonFatalException(provider, getEndpoint(), getEndpoint().getRemoteCondition()), true);
-            } else {
-                closeResource(provider, null, true);
+            if (hasRemoteError() && isAwaitingRemoteClose()) {
+                setFailureCause(createEndpointRemotelyClosedException());
             }
-        }
-
-        public String getLinkName() {
-            return getEndpoint().getName();
         }
     }
 
-    private final class DurableSubscriptionReattachBuilder extends AmqpResourceBuilder<DurableSubscriptionReattach, AmqpSession, JmsSessionInfo, Receiver> {
+    private final class DurableSubscriptionReattachBuilder extends AmqpEndpointBuilder<DurableSubscriptionReattach, AmqpSession, JmsSessionInfo, Receiver> implements AsyncResult {
 
         private final String linkName;
+        private final String subscriptionName;
         private final boolean hasClientID;
 
-        public DurableSubscriptionReattachBuilder(AmqpSession parent, JmsSessionInfo resourceInfo, String linkName) {
-            super(parent, resourceInfo);
+        private DurableSubscriptionReattach subscription;
+        private AsyncResult originalRequest;
+
+        public DurableSubscriptionReattachBuilder(AmqpSession session, JmsSessionInfo resourceInfo, String linkName, String subscriptionName) {
+            super(session.getProvider(), session, resourceInfo);
+
             this.hasClientID = parent.getConnection().getResourceInfo().isExplicitClientID();
             this.linkName = linkName;
+            this.subscriptionName = subscriptionName;
+        }
+
+        @Override
+        public void buildEndpoint(final AsyncResult request, Consumer<DurableSubscriptionReattach> resourceConsumer) {
+            this.originalRequest = request;
+
+            super.buildEndpoint(this, subscription -> {
+                this.subscription = subscription;
+
+                if (resourceConsumer != null) {
+                    resourceConsumer.accept(subscription);
+                }
+            });
         }
 
         @Override
@@ -159,8 +165,8 @@ public class AmqpConnectionSession extends AmqpSession {
         }
 
         @Override
-        protected DurableSubscriptionReattach createResource(AmqpSession parent, JmsSessionInfo resourceInfo, Receiver endpoint) {
-            return new DurableSubscriptionReattach(resourceInfo, endpoint, getProvider());
+        protected DurableSubscriptionReattach createResource(AmqpSession session, JmsSessionInfo resourceInfo, Receiver receiver) {
+            return new DurableSubscriptionReattach(session, resourceInfo, receiver);
         }
 
         @Override
@@ -169,40 +175,30 @@ public class AmqpConnectionSession extends AmqpSession {
             // we need to validate the returned remote source prior to open completion.
             return endpoint.getRemoteSource() == null;
         }
-    }
 
-    private final class DurableSubscriptionReattachRequest extends WrappedAsyncResult {
-
-        private final String subscriptionName;
-        private final DurableSubscriptionReattachBuilder subscriberBuilder;
-
-        public DurableSubscriptionReattachRequest(String subscriptionName, DurableSubscriptionReattachBuilder subscriberBuilder, AsyncResult originalRequest) {
-            super(originalRequest);
-            this.subscriptionName = subscriptionName;
-            this.subscriberBuilder = subscriberBuilder;
+        @Override
+        public void onFailure(ProviderException result) {
+            LOG.trace("Failed to reattach to subscription '{}' using link name '{}'", subscriptionName, linkName);
+            pendingUnsubs.remove(subscriptionName);
+            originalRequest.onFailure(result);
         }
 
         @Override
         public void onSuccess() {
-            DurableSubscriptionReattach subscriber = subscriberBuilder.getResource();
-            LOG.trace("Reattached to subscription '{}' using link name '{}'", subscriptionName, subscriber.getLinkName());
+            LOG.trace("Reattached to subscription '{}' using link name '{}'", subscriptionName, linkName);
             pendingUnsubs.remove(subscriptionName);
-            if (subscriber.getEndpoint().getRemoteSource() != null) {
-                subscriber.close(getWrappedRequest());
+            if (subscription.getEndpoint().getRemoteSource() != null) {
+                subscription.close(originalRequest);
             } else {
-                subscriber.close(NoOpAsyncResult.INSTANCE);
-                getWrappedRequest().onFailure(
+                subscription.close(NoOpAsyncResult.INSTANCE);
+                originalRequest.onFailure(
                     new ProviderInvalidDestinationException("Cannot remove a subscription that does not exist"));
             }
         }
 
         @Override
-        public void onFailure(ProviderException cause) {
-            DurableSubscriptionReattach subscriber = subscriberBuilder.getResource();
-            LOG.trace("Failed to reattach to subscription '{}' using link name '{}'", subscriptionName, subscriber.getLinkName());
-            pendingUnsubs.remove(subscriptionName);
-            subscriber.closeResource(getProvider(), ProviderExceptionSupport.createNonFatalOrPassthrough(cause), false);
-            super.onFailure(cause);
+        public boolean isComplete() {
+            return originalRequest != null && originalRequest.isComplete();
         }
     }
 }

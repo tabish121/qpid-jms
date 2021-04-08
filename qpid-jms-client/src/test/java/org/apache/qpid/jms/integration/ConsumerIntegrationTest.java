@@ -94,7 +94,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
 
     private final IntegrationTestFixture testFixture = new IntegrationTestFixture();
 
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
     public void testCloseConsumer() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -116,7 +116,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
     public void testCloseConsumerTimesOut() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             JmsConnection connection = (JmsConnection) testFixture.establishConnecton(testPeer);
@@ -145,7 +145,51 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
+    public void testClientAcknowledgeAcceptsMessage() throws Exception {
+        doTestReceivedMessageExplicitAcknowledge(Session.CLIENT_ACKNOWLEDGE);
+    }
+
+    @Test(timeout = 20_000)
+    public void testIndividualAcknowledgeAcceptsMessage() throws Exception {
+        doTestReceivedMessageExplicitAcknowledge(101); // Individual Acknowledge
+    }
+
+    private void doTestReceivedMessageExplicitAcknowledge(int ackMode) throws Exception {
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+            Connection connection = testFixture.establishConnecton(testPeer);
+            connection.start();
+
+            testPeer.expectBegin();
+
+            Session session = connection.createSession(false, ackMode);
+            Queue queue = session.createQueue(getTestName());
+
+            testPeer.expectReceiverAttach();
+            testPeer.expectLinkFlowRespondWithTransfer(null, null, null, null, new AmqpValueDescribedType("content"), 1);
+
+            MessageConsumer consumer = session.createConsumer(queue);
+
+            Message receivedMessage = consumer.receive(3000);
+
+            assertNotNull(receivedMessage);
+            assertTrue(receivedMessage instanceof TextMessage);
+
+            testPeer.expectDisposition(true, new AcceptedMatcher());
+            testPeer.expectEnd();
+
+            receivedMessage.acknowledge();
+
+            session.close();
+
+            testPeer.expectClose();
+            connection.close();
+
+            testPeer.waitForAllHandlersToComplete(3000);
+        }
+    }
+
+    @Test(timeout = 20_000)
     public void testRemotelyCloseConsumer() throws Exception {
         final String BREAD_CRUMB = "ErrorMessage";
 
@@ -207,7 +251,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
     public void testRemotelyCloseConsumerWithMessageListenerFiresJMSExceptionListener() throws Exception {
         final String BREAD_CRUMB = "ErrorMessage";
 
@@ -285,7 +329,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
      *
      * @throws Exception if an error occurs during the test.
      */
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
     public void testReceiveMessageWithReceiveZeroTimeout() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -319,7 +363,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
      *
      * @throws Exception if an error occurs during the test.
      */
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
     public void testRuntimeExceptionInOnMessageReleasesInAutoAckMode() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -359,7 +403,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
      *
      * @throws Exception if an error occurs during the test.
      */
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
     public void testRuntimeExceptionInOnMessageReleasesInDupsOkAckMode() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -394,7 +438,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
     public void testCloseDurableTopicSubscriberDetachesWithCloseFalse() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -422,7 +466,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testCloseDurableSubscriberWithUnconsumedPrefetchedMessages() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -464,6 +508,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
 
             testPeer.expectDetach(false, true, false);
 
+            // TODO: Consumer should release prefetched deliveries for detached durable subscriptions
             for (int i = consumeCount + 1 ; i <= messageCount; i++) {
                 testPeer.expectDisposition(true, new ReleasedMatcher());
             }
@@ -480,12 +525,12 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testConsumerReceiveThrowsIfConnectionLost() throws Exception {
         doConsumerReceiveThrowsIfConnectionLostTestImpl(false);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testConsumerTimedReceiveThrowsIfConnectionLost() throws Exception {
         doConsumerReceiveThrowsIfConnectionLostTestImpl(true);
     }
@@ -535,7 +580,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testConsumerReceiveNoWaitThrowsIfConnectionLost() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -563,7 +608,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testSetMessageListenerAfterStartAndSend() throws Exception {
 
         final int messageCount = 4;
@@ -610,7 +655,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testNoReceivedMessagesWhenConnectionNotStarted() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final CountDownLatch incoming = new CountDownLatch(1);
@@ -647,7 +692,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testNoReceivedNoWaitMessagesWhenConnectionNotStarted() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final CountDownLatch incoming = new CountDownLatch(1);
@@ -684,7 +729,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=60000)
+    @Test(timeout = 40_000)
     public void testSyncReceiveFailsWhenListenerSet() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -732,7 +777,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 20000)
+    @Test(timeout = 20_000)
     public void testCreateProducerInOnMessage() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -787,22 +832,22 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testReceiveWithTimoutDrainsOnNoMessage() throws IOException, Exception {
         doDrainOnNoMessageTestImpl(false, true);
     }
 
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testReceiveWithTimoutDoesntDrainOnNoMessageWithLocalOnlyOption() throws IOException, Exception {
         doDrainOnNoMessageTestImpl(true, true);
     }
 
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testReceiveNoWaitDrainsOnNoMessage() throws IOException, Exception {
         doDrainOnNoMessageTestImpl(false, false);
     }
 
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testReceiveNoWaitDoesntDrainOnNoMessageWithLocalOnlyOption() throws IOException, Exception {
         doDrainOnNoMessageTestImpl(true, false);
     }
@@ -859,22 +904,22 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testReceiveWithTimoutAndNoDrainResponseFailsAfterTimeout() throws IOException, Exception {
         doDrainWithNoResponseOnNoMessageTestImpl(false, false);
     }
 
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testReceiveNoWaitAndNoDrainResponseFailsAfterTimeout() throws IOException, Exception {
         doDrainWithNoResponseOnNoMessageTestImpl(true, false);
     }
 
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testDurableReceiveWithTimoutAndNoDrainResponseFailsAfterTimeout() throws IOException, Exception {
         doDrainWithNoResponseOnNoMessageTestImpl(false, true);
     }
 
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testDurableReceiveNoWaitAndNoDrainResponseFailsAfterTimeout() throws IOException, Exception {
         doDrainWithNoResponseOnNoMessageTestImpl(true, true);
     }
@@ -963,7 +1008,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
      * - Check when the consumer tops the credit back up to the initial value that the
      *   value of link-credit on the wire is actually as expected.
      */
-    @Test(timeout=30000)
+    @Test(timeout = 30_000)
     public void testCreditReplenishmentWhenSenderAdvancesDeliveryCountUnexpectedly() throws Exception {
         int prefetch = 4;
         int topUp = 2;
@@ -982,9 +1027,11 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
 
             // Expect consumer to top up the credit window to <prefetch-1> when accepting the first message, accounting
             // for the fact the second prefetched message is still in its local buffer.
-            testPeer.expectLinkFlow(false, false, equalTo(UnsignedInteger.valueOf(prefetch-1)));
             testPeer.expectDisposition(true, new AcceptedMatcher(), 0, 0);
             testPeer.expectDisposition(true, new AcceptedMatcher(), 1, 1);
+            // TODO - Proton doesn't buffer so client sees consistent credit view in this scenario and only
+            //        tops up credit after receiver pulls down both.
+            testPeer.expectLinkFlow(false, false, equalTo(UnsignedInteger.valueOf(prefetch)));
 
             // First timeout used is large to ensure the client sees the
             // delivery count advancement without trying to drain first.
@@ -1006,7 +1053,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testMessageListenerCallsConnectionCloseThrowsIllegalStateException() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final AtomicReference<Exception> asyncError = new AtomicReference<Exception>(null);
@@ -1060,7 +1107,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testMessageListenerCallsConnectionStopThrowsIllegalStateException() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final AtomicReference<Exception> asyncError = new AtomicReference<Exception>(null);
@@ -1114,7 +1161,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testMessageListenerCallsSessionCloseThrowsIllegalStateException() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final AtomicReference<Exception> asyncError = new AtomicReference<Exception>(null);
@@ -1175,7 +1222,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testMessageListenerClosesItsConsumer() throws Exception {
         doMessageListenerClosesItsConsumerTestImpl(false, false, Session.AUTO_ACKNOWLEDGE);
     }
@@ -1298,7 +1345,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
     }
 
     @Repeat(repetitions = 1)
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRecoverOrderingWithAsyncConsumer() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final AtomicReference<Throwable> asyncError = new AtomicReference<Throwable>(null);
@@ -1386,7 +1433,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testConsumerCloseWaitsForAsyncDeliveryToComplete() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
 
@@ -1435,7 +1482,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testSessionCloseWaitsForAsyncDeliveryToComplete() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
 
@@ -1484,7 +1531,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testConnectionCloseWaitsForAsyncDeliveryToComplete() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
 
@@ -1528,7 +1575,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testCloseClientAckAsyncConsumerCanStillAckMessages() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final int DEFAULT_PREFETCH = 100;
@@ -1588,7 +1635,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testCloseClientAckSyncConsumerCanStillAckMessages() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final int DEFAULT_PREFETCH = 100;
@@ -1660,7 +1707,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testCloseConsumersWithDeferredAckHandledLaterWhenlastConsumedMessageIsAcked() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final int DEFAULT_PREFETCH = 10;
@@ -1720,11 +1767,11 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
 
             testPeer.waitForAllHandlersToComplete(3000);
 
+            // Now the links should close as we tear down the deferred consumers after they acknowledge
             testPeer.expectDisposition(true, new AcceptedMatcher());
-            testPeer.expectDisposition(true, new AcceptedMatcher());
-
-            // Now the links should close as we tear down the deferred consumers
             testPeer.expectDetach(true, true, true);
+
+            testPeer.expectDisposition(true, new AcceptedMatcher());
             testPeer.expectDetach(true, true, true);
 
             // Acknowledge the last read message, which should accept all previous messages as well
@@ -1738,7 +1785,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testConsumerWithDeferredCloseAcksAsClosed() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final int DEFAULT_PREFETCH = 100;
@@ -1826,7 +1873,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testConsumerWithDeferredCloseAcksDeliveryFailedAsSessionClosed() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final int DEFAULT_PREFETCH = 100;
@@ -1909,7 +1956,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testDeferredCloseTimeoutAlertsExceptionListener() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final CountDownLatch errorLatch = new CountDownLatch(1);
@@ -1968,7 +2015,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testSessionCloseDoesNotDeferConsumerClose() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
@@ -2008,52 +2055,52 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedAccepted() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(1, false);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedRejected() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(2, false);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedReleased() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(3, false);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedModifiedFailed() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(4, false);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedModifiedFailedUndeliverable() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(5, false);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedAcceptedString() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(1, true);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedRejectedString() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(2, true);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedReleasedString() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(3, true);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedModifiedFailedString() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(4, true);
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testRedeliveryPolicyOutcomeAppliedModifiedFailedUndeliverableString() throws Exception {
         doTestRedeliveryPolicyOutcomeApplied(5, true);
     }
@@ -2162,7 +2209,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testLinkCreditReplenishmentWithPrefetchFilled() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final int prefetch = 10;
@@ -2222,9 +2269,9 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
                 }
             });
 
+            testPeer.expectDisposition(true, new AcceptedMatcher(), consumed, consumed);
             testPeer.expectLinkFlowRespondWithTransfer(null, null, null, null, amqpValueNullContent,
                     newOutstandingCredit, false, false, equalTo(UnsignedInteger.valueOf(newOutstandingCredit)), initialMessageCount + 1, false, false);
-            testPeer.expectDisposition(true, new AcceptedMatcher(), consumed, consumed);
 
             Message message = consumer.receiveNoWait();
             assertNotNull("Should have received a 3rd message " + consumed, message);
@@ -2236,12 +2283,13 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
             // another flow expanding the window to the limit again, then more dispositions, then another flow as the
             // threshold is crossed again when the buffered message count decreases further.
             for (consumed = 4; consumed < prefetch + newOutstandingCredit; consumed++) {
-                if(consumed == 3 + newOutstandingCredit) {
+                testPeer.expectDisposition(true, new AcceptedMatcher(), consumed, consumed);
+
+                if (consumed == 3 + newOutstandingCredit) {
                     testPeer.expectLinkFlow(false, equalTo(UnsignedInteger.valueOf(newOutstandingCredit)));
-                } else if(consumed == 3 + newOutstandingCredit * 2) {
+                } else if (consumed == 3 + newOutstandingCredit * 2) {
                     testPeer.expectLinkFlow(false, equalTo(UnsignedInteger.valueOf(newOutstandingCredit * 2)));
                 }
-                testPeer.expectDisposition(true, new AcceptedMatcher(), consumed, consumed);
 
                 message = consumer.receiveNoWait();
                 assertNotNull("Should have received a message " + consumed, message);
@@ -2254,7 +2302,7 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testLinkCreditReplenishmentWithPrefetchTrickleFeed() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             final int prefetch = 10;
@@ -2280,12 +2328,12 @@ public class ConsumerIntegrationTest extends QpidJmsTestCase {
             // Now consume a message and have the peer send another in response, repeat until consumed 15 messages
             int consumed = 0;
             for (consumed = 1; consumed <= 15; consumed ++) {
-                if(consumed == 5 || consumed == 10 || consumed == 15) {
+                testPeer.expectDisposition(true, new AcceptedMatcher(), consumed, consumed);
+                if (consumed == 5 || consumed == 10 || consumed == 15) {
                     testPeer.expectLinkFlow(false, equalTo(UnsignedInteger.valueOf(prefetch)));
                 }
 
-                testPeer.expectDisposition(true, new AcceptedMatcher(), consumed, consumed);
-                if(consumed != 15) {
+                if (consumed != 15) {
                     testPeer.sendTransferToLastOpenedLinkOnLastOpenedSession(null, null, null, null, amqpValueNullContent, consumed +1);
                 }
 

@@ -16,9 +16,6 @@
  */
 package org.apache.qpid.jms.provider.failover;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.NETWORK_HOST;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.OPEN_HOSTNAME;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.PORT;
 import static org.junit.Assert.assertTrue;
 
 import java.net.URI;
@@ -65,9 +62,9 @@ public class FailoverRedirectTest extends QpidJmsTestCase {
             redirectedPeer.expectBegin();
 
             Map<Symbol, Object> redirectInfo = new HashMap<Symbol, Object>();
-            redirectInfo.put(OPEN_HOSTNAME, "localhost");
-            redirectInfo.put(NETWORK_HOST, "localhost");
-            redirectInfo.put(PORT, redirectedPeer.getServerPort());
+            redirectInfo.put(TestAmqpPeer.OPEN_HOSTNAME, "localhost");
+            redirectInfo.put(TestAmqpPeer.NETWORK_HOST, "localhost");
+            redirectInfo.put(TestAmqpPeer.PORT, redirectedPeer.getServerPort());
 
             rejectingPeer.rejectConnect(ConnectionError.REDIRECT, "Server is full, go away", redirectInfo);
 
@@ -109,9 +106,9 @@ public class FailoverRedirectTest extends QpidJmsTestCase {
             redirectedPeer.expectBegin();
 
             Map<Symbol, Object> redirectInfo = new HashMap<Symbol, Object>();
-            redirectInfo.put(OPEN_HOSTNAME, "localhost");
-            redirectInfo.put(NETWORK_HOST, "localhost");
-            redirectInfo.put(PORT, redirectedPeer.getServerPort());
+            redirectInfo.put(TestAmqpPeer.OPEN_HOSTNAME, "localhost");
+            redirectInfo.put(TestAmqpPeer.NETWORK_HOST, "localhost");
+            redirectInfo.put(TestAmqpPeer.PORT, redirectedPeer.getServerPort());
 
             rejectingPeer.expectSaslAnonymous();
             rejectingPeer.expectOpen();

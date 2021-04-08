@@ -33,40 +33,42 @@ import org.apache.qpid.jms.provider.amqp.AmqpSession;
 import org.apache.qpid.jms.provider.amqp.AmqpSupport;
 import org.apache.qpid.jms.provider.amqp.message.AmqpDestinationHelper;
 import org.apache.qpid.jms.provider.exceptions.ProviderInvalidDestinationException;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.Accepted;
-import org.apache.qpid.proton.amqp.messaging.Modified;
-import org.apache.qpid.proton.amqp.messaging.Rejected;
-import org.apache.qpid.proton.amqp.messaging.Released;
-import org.apache.qpid.proton.amqp.messaging.Source;
-import org.apache.qpid.proton.amqp.messaging.Target;
-import org.apache.qpid.proton.amqp.transport.ReceiverSettleMode;
-import org.apache.qpid.proton.amqp.transport.SenderSettleMode;
-import org.apache.qpid.proton.engine.Sender;
+import org.apache.qpid.protonj2.engine.Sender;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.Accepted;
+import org.apache.qpid.protonj2.types.messaging.Modified;
+import org.apache.qpid.protonj2.types.messaging.Rejected;
+import org.apache.qpid.protonj2.types.messaging.Released;
+import org.apache.qpid.protonj2.types.messaging.Source;
+import org.apache.qpid.protonj2.types.messaging.Target;
+import org.apache.qpid.protonj2.types.transport.ReceiverSettleMode;
+import org.apache.qpid.protonj2.types.transport.SenderSettleMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Resource builder responsible for creating and opening an AmqpProducer instance.
+ * AMQP {@link Sender} link builder that creates {@link AmqpProducer} wrappers around the
+ * opened {@link Sender} links with the given configuration.
  */
-public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpSession, JmsProducerInfo, Sender> {
+public class AmqpProducerBuilder extends AmqpEndpointBuilder<AmqpProducer, AmqpSession, JmsProducerInfo, Sender> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpProducerBuilder.class);
-    private boolean validateDelayedDeliveryLinkCapability;
 
-    public AmqpProducerBuilder(AmqpSession parent, JmsProducerInfo resourceInfo) {
-        super(parent, resourceInfo);
+    private boolean delayedDeliverySupported;
+
+    public AmqpProducerBuilder(AmqpSession session, JmsProducerInfo resourceInfo) {
+        super(session.getProvider(), session, resourceInfo);
     }
 
     @Override
-    public void buildResource(final AsyncResult request) {
+    public void buildEndpoint(final AsyncResult request) {
         if (getResourceInfo().getDestination() == null && !getParent().getConnection().getProperties().isAnonymousRelaySupported()) {
             LOG.debug("Creating an AmqpAnonymousFallbackProducer");
             new AmqpAnonymousFallbackProducer(getParent(), getResourceInfo());
             request.onSuccess();
         } else {
             LOG.debug("Creating AmqpFixedProducer for: {}", getResourceInfo().getDestination());
-            super.buildResource(request);
+            super.buildEndpoint(request);
         }
     }
 
@@ -104,8 +106,9 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
         sender.setReceiverSettleMode(ReceiverSettleMode.FIRST);
 
         if (!connection.getProperties().isDelayedDeliverySupported()) {
-            validateDelayedDeliveryLinkCapability = true;
             sender.setDesiredCapabilities(new Symbol[] { AmqpSupport.DELAYED_DELIVERY });
+        } else {
+            delayedDeliverySupported = true;
         }
 
         return sender;
@@ -113,12 +116,16 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
 
     @Override
     protected AmqpProducer createResource(AmqpSession parent, JmsProducerInfo resourceInfo, Sender endpoint) {
-        return new AmqpFixedProducer(getParent(), getResourceInfo(), endpoint);
+        AmqpFixedProducer producer = new AmqpFixedProducer(getParent(), getResourceInfo(), endpoint);
+
+        producer.setDelayedDeliverySupported(delayedDeliverySupported);
+
+        return producer;
     }
 
     @Override
-    protected void afterOpened() {
-        if (validateDelayedDeliveryLinkCapability) {
+    protected void processEndpointRemotelyOpened(Sender sender, JmsProducerInfo resourceInfo) {
+        if (!delayedDeliverySupported) {
             Symbol[] remoteOfferedCapabilities = endpoint.getRemoteOfferedCapabilities();
 
             boolean supported = false;
@@ -129,7 +136,7 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
                 }
             }
 
-            getResource().setDelayedDeliverySupported(supported);
+            delayedDeliverySupported = supported;
         }
     }
 
@@ -143,7 +150,8 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
     @Override
     protected ProviderException getDefaultOpenAbortException() {
         // Verify the attach response contained a non-null target
-        org.apache.qpid.proton.amqp.transport.Target target = getEndpoint().getRemoteTarget();
+        final Target target = getEndpoint().getRemoteTarget();
+
         if (target != null) {
             return super.getDefaultOpenAbortException();
         } else {

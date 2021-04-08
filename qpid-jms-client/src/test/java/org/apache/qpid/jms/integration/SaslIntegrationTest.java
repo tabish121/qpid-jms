@@ -458,7 +458,7 @@ public class SaslIntegrationTest extends QpidJmsTestCase {
     private void doMechanismNegotiationFailsToFindMatchTestImpl(boolean createContext) throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
 
-            String failureMessageBreadcrumb = "Could not find a suitable SASL mechanism."
+            String failureMessageBreadcrumb = "Could not find a suitable SASL Mechanism."
                     + " No supported mechanism, or none usable with the available credentials. Server offered: [SCRAM-SHA-1, UNKNOWN, PLAIN]";
             Symbol[] serverMechs = new Symbol[] { SCRAM_SHA_1, Symbol.valueOf("UNKNOWN"), PLAIN};
 
@@ -473,7 +473,7 @@ public class SaslIntegrationTest extends QpidJmsTestCase {
                 } catch (JMSSecurityRuntimeException jmssre) {
                     // Expected, we deliberately failed the mechanism negotiation process.
                     assertNotNull("Expected an exception message", jmssre.getMessage());
-                    assertEquals("Unexpected message details", jmssre.getMessage(), failureMessageBreadcrumb);
+                    assertEquals("Unexpected message details", failureMessageBreadcrumb, jmssre.getMessage());
                 }
             } else {
                 try {
@@ -482,7 +482,7 @@ public class SaslIntegrationTest extends QpidJmsTestCase {
                 } catch (JMSSecurityException jmsse) {
                     // Expected, we deliberately failed the mechanism negotiation process.
                     assertNotNull("Expected an exception message", jmsse.getMessage());
-                    assertEquals("Unexpected message details", jmsse.getMessage(), failureMessageBreadcrumb);
+                    assertEquals("Unexpected message details", failureMessageBreadcrumb, jmsse.getMessage());
                 }
             }
 

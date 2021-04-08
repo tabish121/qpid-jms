@@ -36,6 +36,11 @@ public abstract class JmsAbstractResourceId implements JmsResourceId {
     }
 
     @Override
+    public <T> T getProviderHint(Class<T> desiredType) {
+        return desiredType.cast(providerHint);
+    }
+
+    @Override
     public void setProviderContext(Object context) {
         this.providerContext = context;
     }

@@ -235,7 +235,8 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
             assertFalse("Message Arrived unexpectedly", messageArrived.await(500, TimeUnit.MILLISECONDS));
 
             testPeer.expectDetach(true, true, true);
-            testPeer.expectDispositionThatIsReleasedAndSettled();
+            // TODO: This shouldn't go out but does in existing proton, link is closed so delivery is no longer active.
+            // testPeer.expectDispositionThatIsReleasedAndSettled();
             consumer.close();
 
             testPeer.expectClose();
@@ -456,7 +457,8 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
             assertTrue("Exception should have been fired", exceptionFired.await(5, TimeUnit.SECONDS));
 
             testPeer.expectDetach(true, true, true);
-            testPeer.expectDispositionThatIsReleasedAndSettled();
+            // TODO: This shouldn't go out but does in existing proton, link is closed so delivery is no longer active.
+            // testPeer.expectDispositionThatIsReleasedAndSettled();
             consumer.close();
 
             testPeer.expectClose();
@@ -497,7 +499,8 @@ public class ConnectionConsumerIntegrationTest extends QpidJmsTestCase {
             assertTrue("Exception should have been fired", exceptionFired.await(5, TimeUnit.SECONDS));
 
             testPeer.expectDetach(true, true, true);
-            testPeer.expectDispositionThatIsReleasedAndSettled();
+            // TODO: This shouldn't go out but does in existing proton, link is closed so delivery is no longer active.
+            // testPeer.expectDispositionThatIsReleasedAndSettled();
             consumer.close();
 
             testPeer.expectClose();

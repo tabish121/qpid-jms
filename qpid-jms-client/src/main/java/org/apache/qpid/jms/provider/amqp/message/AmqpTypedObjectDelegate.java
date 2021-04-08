@@ -21,12 +21,11 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.Section;
-
-import io.netty.buffer.ByteBuf;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.Section;
 
 /**
  * Wrapper around an AMQP Message instance that will be treated as a JMS ObjectMessage
@@ -34,9 +33,9 @@ import io.netty.buffer.ByteBuf;
  */
 public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
 
-    static final AmqpValue NULL_OBJECT_BODY = new AmqpValue(null);
+    static final AmqpValue<Object> NULL_OBJECT_BODY = new AmqpValue<>(null);
 
-    private ByteBuf encodedBody;
+    private ProtonBuffer encodedBody;
     private final AmqpJmsMessageFacade parent;
 
     /**
@@ -55,9 +54,10 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
         }
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     public Serializable getObject() throws IOException, ClassNotFoundException {
-        Section body = null;
+        Section<?> body = null;
 
         if (encodedBody != null) {
             body = AmqpCodec.decode(encodedBody);
@@ -69,7 +69,7 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
             // TODO: This is assuming the object can be immediately returned, and is
             //       deeply Serializable. We will actually have to ensure elements are
             //       Serializable and e.g convert the Uint/Ubyte etc wrappers.
-            return (Serializable) ((AmqpValue) body).getValue();
+            return (Serializable) ((AmqpValue<Object>) body).getValue();
         } else if (body instanceof Data) {
             // TODO: return as byte[]? ByteBuffer?
             throw new UnsupportedOperationException("Data support still to be added");
@@ -77,7 +77,7 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
             // TODO: This is assuming the object can be immediately returned, and is
             //       deeply Serializable. We will actually have to ensure elements are
             //       Serializable and e.g convert the Uint/Ubyte etc wrappers.
-            return (Serializable) ((AmqpSequence) body).getValue();
+            return (Serializable) ((AmqpSequence<Object>) body).getValue();
         } else {
             throw new IllegalStateException("Unexpected body type: " + body.getClass().getSimpleName());
         }
@@ -92,8 +92,8 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
             // Exchange the incoming body value for one that is created from encoding
             // and decoding the value. Save the bytes for subsequent getObject and
             // copyInto calls to use.
-            encodedBody = AmqpCodec.encode(new AmqpValue(value));
-            Section decodedBody = AmqpCodec.decode(encodedBody);
+            encodedBody = AmqpCodec.encode(new AmqpValue<Object>(value));
+            Section<?> decodedBody = AmqpCodec.decode(encodedBody);
 
             // This step requires a heavy-weight operation of both encoding and decoding the
             // incoming body value in order to create a copy such that changes to the original

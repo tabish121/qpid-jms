@@ -111,9 +111,9 @@ public class ObjectMessageIntegrationTest extends QpidJmsTestCase {
 
             MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true).withDurable(equalTo(true));
             MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_MSG_TYPE, equalTo(AmqpMessageSupport.JMS_OBJECT_MESSAGE));
+            msgAnnotationsMatcher.withEntry(JMS_MSG_TYPE, equalTo(AmqpMessageSupport.JMS_OBJECT_MESSAGE));
             MessagePropertiesSectionMatcher propertiesMatcher = new MessagePropertiesSectionMatcher(true);
-            propertiesMatcher.withContentType(equalTo(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE));
+            propertiesMatcher.withContentType(equalTo(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE));
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
             messageMatcher.setHeadersMatcher(headersMatcher);
             messageMatcher.setMessageAnnotationsMatcher(msgAnnotationsMatcher);
@@ -178,7 +178,7 @@ public class ObjectMessageIntegrationTest extends QpidJmsTestCase {
             Queue queue = session.createQueue("myQueue");
 
             PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
+            properties.setContentType(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
 
             String expectedContent = "expectedContent";
 
@@ -190,7 +190,7 @@ public class ObjectMessageIntegrationTest extends QpidJmsTestCase {
             byte[] bytes = baos.toByteArray();
 
             MessageAnnotationsDescribedType msgAnnotations = new MessageAnnotationsDescribedType();
-            msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_OBJECT_MESSAGE);
+            msgAnnotations.setSymbolKeyedAnnotation(JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_OBJECT_MESSAGE);
 
             DescribedType dataContent = new DataDescribedType(new Binary(bytes));
 
@@ -243,9 +243,9 @@ public class ObjectMessageIntegrationTest extends QpidJmsTestCase {
             Queue queue = session.createQueue("myQueue");
 
             MessageAnnotationsDescribedType msgAnnotations = new MessageAnnotationsDescribedType();
-            msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_OBJECT_MESSAGE);
+            msgAnnotations.setSymbolKeyedAnnotation(JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_OBJECT_MESSAGE);
             PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
+            properties.setContentType(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
 
             String expectedContent = "expectedContent";
 
@@ -274,9 +274,9 @@ public class ObjectMessageIntegrationTest extends QpidJmsTestCase {
 
             MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true).withDurable(equalTo(true));
             MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_MSG_TYPE, equalTo(AmqpMessageSupport.JMS_OBJECT_MESSAGE));
+            msgAnnotationsMatcher.withEntry(JMS_MSG_TYPE, equalTo(AmqpMessageSupport.JMS_OBJECT_MESSAGE));
             MessagePropertiesSectionMatcher propertiesMatcher = new MessagePropertiesSectionMatcher(true);
-            propertiesMatcher.withContentType(equalTo(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE));
+            propertiesMatcher.withContentType(equalTo(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE));
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
             messageMatcher.setHeadersMatcher(headersMatcher);
             messageMatcher.setMessageAnnotationsMatcher(msgAnnotationsMatcher);
@@ -372,9 +372,9 @@ public class ObjectMessageIntegrationTest extends QpidJmsTestCase {
             Queue queue = session.createQueue("myQueue");
 
             MessageAnnotationsDescribedType msgAnnotations = new MessageAnnotationsDescribedType();
-            msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_OBJECT_MESSAGE);
+            msgAnnotations.setSymbolKeyedAnnotation(JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_OBJECT_MESSAGE);
             PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
+            properties.setContentType(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
 
             SimplePojo expectedContent = new SimplePojo(UUID.randomUUID());
 
@@ -441,7 +441,7 @@ public class ObjectMessageIntegrationTest extends QpidJmsTestCase {
 
             MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true).withDurable(equalTo(true));
             MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_MSG_TYPE, equalTo(AmqpMessageSupport.JMS_OBJECT_MESSAGE));
+            msgAnnotationsMatcher.withEntry(JMS_MSG_TYPE, equalTo(AmqpMessageSupport.JMS_OBJECT_MESSAGE));
             MessagePropertiesSectionMatcher propertiesMatcher = new MessagePropertiesSectionMatcher(true);
             propertiesMatcher.withContentType(nullValue());//check there is no content-type
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();

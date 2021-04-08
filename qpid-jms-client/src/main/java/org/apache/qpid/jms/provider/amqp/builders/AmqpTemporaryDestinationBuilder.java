@@ -27,27 +27,28 @@ import org.apache.qpid.jms.JmsTemporaryDestination;
 import org.apache.qpid.jms.provider.amqp.AmqpSession;
 import org.apache.qpid.jms.provider.amqp.AmqpTemporaryDestination;
 import org.apache.qpid.jms.provider.amqp.message.AmqpDestinationHelper;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.DeleteOnClose;
-import org.apache.qpid.proton.amqp.messaging.Source;
-import org.apache.qpid.proton.amqp.messaging.Target;
-import org.apache.qpid.proton.amqp.messaging.TerminusDurability;
-import org.apache.qpid.proton.amqp.messaging.TerminusExpiryPolicy;
-import org.apache.qpid.proton.amqp.transport.ReceiverSettleMode;
-import org.apache.qpid.proton.amqp.transport.SenderSettleMode;
-import org.apache.qpid.proton.engine.Sender;
+import org.apache.qpid.protonj2.engine.Sender;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.DeleteOnClose;
+import org.apache.qpid.protonj2.types.messaging.Source;
+import org.apache.qpid.protonj2.types.messaging.Target;
+import org.apache.qpid.protonj2.types.messaging.TerminusDurability;
+import org.apache.qpid.protonj2.types.messaging.TerminusExpiryPolicy;
+import org.apache.qpid.protonj2.types.transport.ReceiverSettleMode;
+import org.apache.qpid.protonj2.types.transport.SenderSettleMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Resource builder responsible for creating and opening an AmqpTemporaryDestination instance.
+ * {@link AmqpTemporaryDestination} builder object that create a {@link Sender} link with a dynamic
+ * node in order to generate a the temporary destination at the remote peer.
  */
-public class AmqpTemporaryDestinationBuilder extends AmqpResourceBuilder<AmqpTemporaryDestination, AmqpSession, JmsTemporaryDestination, Sender> {
+public class AmqpTemporaryDestinationBuilder extends AmqpEndpointBuilder<AmqpTemporaryDestination, AmqpSession, JmsTemporaryDestination, Sender> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpTemporaryDestinationBuilder.class);
 
-    public AmqpTemporaryDestinationBuilder(AmqpSession parent, JmsTemporaryDestination resourceInfo) {
-        super(parent, resourceInfo);
+    public AmqpTemporaryDestinationBuilder(AmqpSession session, JmsTemporaryDestination resourceInfo) {
+        super(session.getProvider(), session, resourceInfo);
     }
 
     @Override
@@ -92,8 +93,8 @@ public class AmqpTemporaryDestinationBuilder extends AmqpResourceBuilder<AmqpTem
     }
 
     @Override
-    protected AmqpTemporaryDestination createResource(AmqpSession parent, JmsTemporaryDestination resourceInfo, Sender endpoint) {
-        return new AmqpTemporaryDestination(getParent(), getResourceInfo(), endpoint);
+    protected AmqpTemporaryDestination createResource(AmqpSession session, JmsTemporaryDestination resourceInfo, Sender sender) {
+        return new AmqpTemporaryDestination(session, resourceInfo, sender);
     }
 
     @Override
@@ -104,11 +105,11 @@ public class AmqpTemporaryDestinationBuilder extends AmqpResourceBuilder<AmqpTem
     }
 
     @Override
-    protected void afterOpened() {
+    protected void processEndpointRemotelyOpened(Sender sender, JmsTemporaryDestination resourceInfo) {
         if (!isClosePending()) {
             // Once our sender is opened we can read the updated name from the target address.
             String oldDestinationName = resourceInfo.getAddress();
-            String destinationName = getEndpoint().getRemoteTarget().getAddress();
+            String destinationName = sender.<Target>getRemoteTarget().getAddress();
 
             resourceInfo.setAddress(destinationName);
 

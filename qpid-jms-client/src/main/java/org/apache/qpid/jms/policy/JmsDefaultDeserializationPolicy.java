@@ -68,20 +68,11 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
      * Creates an instance of this policy with default configuration.
      */
     public JmsDefaultDeserializationPolicy() {
-
-        // TODO: Upon removal of deprecated constants replace with call to use the CATCH_ALL_WILDCARD as the default
-        //        final String allowList = System.getProperty(ALLOWLIST_PROPERTY, CATCH_ALL_WILDCARD);
-
-        final String deprecatedAllowList = System.getProperty(DEPRECATED_ALLOWLIST_PROPERTY, CATCH_ALL_WILDCARD);
-        final String allowList = System.getProperty(ALLOWLIST_PROPERTY, deprecatedAllowList);
+        final String allowList = System.getProperty(ALLOWLIST_PROPERTY, CATCH_ALL_WILDCARD);
 
         setAllowList(allowList);
 
-        // TODO: Upon removal of deprecated constants replace with call to use the no default value method
-        //        final String denyList = System.getProperty(DENYLIST_PROPERTY);
-
-        final String deprecatedDenyList = System.getProperty(DEPRECATED_DENYLIST_PROPERTY);
-        final String denyList = System.getProperty(DENYLIST_PROPERTY, deprecatedDenyList);
+        final String denyList = System.getProperty(DENYLIST_PROPERTY);
 
         setDenyList(denyList);
     }
@@ -153,16 +144,6 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
 
     /**
      * @return the allow list configured on this policy instance.
-     *
-     * @deprecated Use the replacement method {@link #getAllowList()}
-     */
-    @Deprecated
-    public String getWhiteList() {
-        return getAllowList();
-    }
-
-    /**
-     * @return the allow list configured on this policy instance.
      */
     public String getAllowList() {
         Iterator<String> entries = allowList.iterator();
@@ -176,16 +157,6 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
         }
 
         return builder.toString();
-    }
-
-    /**
-     * @return the deny list configured on this policy instance.
-     *
-     * @deprecated Use the replacement method {@link #getDenyList()}
-     */
-    @Deprecated
-    public String getBlackList() {
-        return getDenyList();
     }
 
     /**
@@ -232,17 +203,6 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
         }
 
         this.allowList = list;
-    }
-
-    /**
-     * @param denyList
-     *      the deny list that this policy is configured to recognize.
-     *
-     * @deprecated Use the replacement method {@link #setDenyList(String)}
-     */
-    @Deprecated
-    public void setBlackList(String denyList) {
-        setDenyList(denyList);
     }
 
     /**

@@ -25,7 +25,6 @@ import org.apache.qpid.jms.meta.JmsConsumerInfo;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
-import org.apache.qpid.proton.message.Message;
 import org.junit.Before;
 import org.mockito.Mockito;
 
@@ -48,7 +47,7 @@ public class AmqpJmsMessageTypesTestCase extends QpidJmsTestCase {
         return facade;
     }
 
-    protected AmqpJmsMessageFacade createReceivedMessageFacade(AmqpConsumer amqpConsumer, Message message) {
+    protected AmqpJmsMessageFacade createReceivedMessageFacade(AmqpConsumer amqpConsumer, AmqpMessage message) {
         AmqpJmsMessageFacade facade = new AmqpJmsMessageFacade();
         initializeReceivedMessage(facade, amqpConsumer, message);
         return facade;
@@ -60,7 +59,7 @@ public class AmqpJmsMessageTypesTestCase extends QpidJmsTestCase {
         return facade;
     }
 
-    protected AmqpJmsTextMessageFacade createReceivedTextMessageFacade(AmqpConsumer amqpConsumer, Message message) {
+    protected AmqpJmsTextMessageFacade createReceivedTextMessageFacade(AmqpConsumer amqpConsumer, AmqpMessage message) {
         AmqpJmsTextMessageFacade facade = new AmqpJmsTextMessageFacade();
         initializeReceivedMessage(facade, amqpConsumer, message);
         return facade;
@@ -72,7 +71,7 @@ public class AmqpJmsMessageTypesTestCase extends QpidJmsTestCase {
         return facade;
     }
 
-    protected AmqpJmsBytesMessageFacade createReceivedBytesMessageFacade(AmqpConsumer amqpConsumer, Message message) {
+    protected AmqpJmsBytesMessageFacade createReceivedBytesMessageFacade(AmqpConsumer amqpConsumer, AmqpMessage message) {
         AmqpJmsBytesMessageFacade facade = new AmqpJmsBytesMessageFacade();
         initializeReceivedMessage(facade, amqpConsumer, message);
         return facade;
@@ -84,7 +83,7 @@ public class AmqpJmsMessageTypesTestCase extends QpidJmsTestCase {
         return facade;
     }
 
-    protected AmqpJmsMapMessageFacade createReceivedMapMessageFacade(AmqpConsumer amqpConsumer, Message message) {
+    protected AmqpJmsMapMessageFacade createReceivedMapMessageFacade(AmqpConsumer amqpConsumer, AmqpMessage message) {
         AmqpJmsMapMessageFacade facade = new AmqpJmsMapMessageFacade();
         initializeReceivedMessage(facade, amqpConsumer, message);
         return facade;
@@ -96,7 +95,7 @@ public class AmqpJmsMessageTypesTestCase extends QpidJmsTestCase {
         return facade;
     }
 
-    protected AmqpJmsStreamMessageFacade createReceivedStreamMessageFacade(AmqpConsumer amqpConsumer, Message message) {
+    protected AmqpJmsStreamMessageFacade createReceivedStreamMessageFacade(AmqpConsumer amqpConsumer, AmqpMessage message) {
         AmqpJmsStreamMessageFacade facade = new AmqpJmsStreamMessageFacade();
         initializeReceivedMessage(facade, amqpConsumer, message);
         return facade;
@@ -108,19 +107,19 @@ public class AmqpJmsMessageTypesTestCase extends QpidJmsTestCase {
         return facade;
     }
 
-    protected AmqpJmsObjectMessageFacade createReceivedObjectMessageFacade(AmqpConsumer amqpConsumer, Message message) {
+    protected AmqpJmsObjectMessageFacade createReceivedObjectMessageFacade(AmqpConsumer amqpConsumer, AmqpMessage message) {
         AmqpJmsObjectMessageFacade facade = new AmqpJmsObjectMessageFacade();
         initializeReceivedMessage(facade, amqpConsumer, message);
         return facade;
     }
 
-    protected void initializeReceivedMessage(AmqpJmsMessageFacade facade, AmqpConsumer amqpConsumer, Message message) {
+    protected void initializeReceivedMessage(AmqpJmsMessageFacade facade, AmqpConsumer amqpConsumer, AmqpMessage message) {
         facade.setHeader(message.getHeader());
         facade.setDeliveryAnnotations(message.getDeliveryAnnotations());
         facade.setMessageAnnotations(message.getMessageAnnotations());
         facade.setProperties(message.getProperties());
         facade.setApplicationProperties(message.getApplicationProperties());
-        facade.setBody(message.getBody());
+        facade.setBody(message.body());
         facade.setFooter(message.getFooter());
         facade.initialize(amqpConsumer);
     }

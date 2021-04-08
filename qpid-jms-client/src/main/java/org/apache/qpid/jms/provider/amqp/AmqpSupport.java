@@ -29,14 +29,13 @@ import org.apache.qpid.jms.provider.exceptions.ProviderInvalidDestinationExcepti
 import org.apache.qpid.jms.provider.exceptions.ProviderResourceAllocationException;
 import org.apache.qpid.jms.provider.exceptions.ProviderSecurityException;
 import org.apache.qpid.jms.provider.exceptions.ProviderTransactionRolledBackException;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.Modified;
-import org.apache.qpid.proton.amqp.messaging.Rejected;
-import org.apache.qpid.proton.amqp.transaction.TransactionErrors;
-import org.apache.qpid.proton.amqp.transport.AmqpError;
-import org.apache.qpid.proton.amqp.transport.ConnectionError;
-import org.apache.qpid.proton.amqp.transport.ErrorCondition;
-import org.apache.qpid.proton.engine.Endpoint;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.Modified;
+import org.apache.qpid.protonj2.types.messaging.Rejected;
+import org.apache.qpid.protonj2.types.transactions.TransactionErrors;
+import org.apache.qpid.protonj2.types.transport.AmqpError;
+import org.apache.qpid.protonj2.types.transport.ConnectionError;
+import org.apache.qpid.protonj2.types.transport.ErrorCondition;
 
 public class AmqpSupport {
 
@@ -106,14 +105,12 @@ public class AmqpSupport {
      *
      * @param provider
      * 		the AMQP provider instance that originates this exception
-     * @param endpoint
-     *      The target of the error.
      * @param errorCondition
      *      The ErrorCondition returned from the remote peer.
      *
      * @return a new Exception instance that best matches the ErrorCondition value.
      */
-    public static ProviderConnectionRemotelyClosedException convertToConnectionClosedException(AmqpProvider provider, Endpoint endpoint, ErrorCondition errorCondition) {
+    public static ProviderConnectionRemotelyClosedException convertToConnectionClosedException(AmqpProvider provider, ErrorCondition errorCondition) {
         ProviderConnectionRemotelyClosedException remoteError = null;
 
         if (errorCondition != null && errorCondition.getCondition() != null) {
@@ -155,14 +152,12 @@ public class AmqpSupport {
      *
      * @param provider
      * 		the AMQP provider instance that originates this exception
-     * @param endpoint
-     *      The target of the error.
      * @param errorCondition
      *      The ErrorCondition returned from the remote peer.
      *
      * @return a new Exception instance that best matches the ErrorCondition value.
      */
-    public static ProviderException convertToNonFatalException(AmqpProvider provider, Endpoint endpoint, ErrorCondition errorCondition) {
+    public static ProviderException convertToNonFatalException(AmqpProvider provider, ErrorCondition errorCondition) {
         ProviderException remoteError = null;
 
         if (errorCondition != null && errorCondition.getCondition() != null) {

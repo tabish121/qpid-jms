@@ -27,7 +27,7 @@ public class GssapiMechanismTest {
     public void testIsApplicableWithoutCredentials() {
         GssapiMechanism mech = new GssapiMechanism();
 
-        assertTrue("Should be applicable without credentials", mech.isApplicable(null, null, null));
+        assertTrue("Should be applicable without credentials", mech.isApplicable(null));
     }
 
     @Test

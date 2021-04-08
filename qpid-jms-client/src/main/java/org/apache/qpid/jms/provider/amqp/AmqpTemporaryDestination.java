@@ -17,7 +17,7 @@
 package org.apache.qpid.jms.provider.amqp;
 
 import org.apache.qpid.jms.JmsTemporaryDestination;
-import org.apache.qpid.proton.engine.Sender;
+import org.apache.qpid.protonj2.engine.Sender;
 
 /**
  * Manages a Temporary Destination linked to a given Connection.
@@ -31,13 +31,13 @@ import org.apache.qpid.proton.engine.Sender;
  * the broker in the case where the user does not have authorization to access temporary
  * destinations.
  */
-public class AmqpTemporaryDestination extends AmqpAbstractResource<JmsTemporaryDestination, Sender> {
+public class AmqpTemporaryDestination extends AmqpAbstractEndpoint<JmsTemporaryDestination, Sender> {
 
     private final AmqpConnection connection;
     private final AmqpSession session;
 
     public AmqpTemporaryDestination(AmqpSession session, JmsTemporaryDestination destination, Sender endpoint) {
-        super(destination, endpoint, session);
+        super(session.getProvider(), destination, endpoint);
 
         this.session = session;
         this.connection = session.getConnection();

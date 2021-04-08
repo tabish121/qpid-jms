@@ -36,12 +36,14 @@ import org.apache.qpid.jms.test.proxy.TestProxy.ProxyType;
 import org.apache.qpid.jms.transports.Transport;
 import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.transports.TransportOptions;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonByteBufferAllocator;
+import org.apache.qpid.protonj2.buffer.ProtonNettyByteBuffer;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler.HandshakeComplete;
@@ -137,7 +139,7 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
     public void testConnectionsSendReceiveLargeDataWhenFrameSizeAllowsIt() throws Exception {
         final int FRAME_SIZE = 8192;
 
-        ByteBuf sendBuffer = Unpooled.buffer(FRAME_SIZE);
+        ProtonBuffer sendBuffer = ProtonByteBufferAllocator.DEFAULT.allocate(FRAME_SIZE);
         for (int i = 0; i < FRAME_SIZE; ++i) {
             sendBuffer.writeByte('A');
         }
@@ -183,7 +185,7 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
     public void testConnectionReceivesFragmentedData() throws Exception {
         final int FRAME_SIZE = 5317;
 
-        ByteBuf sendBuffer = Unpooled.buffer(FRAME_SIZE);
+        ProtonBuffer sendBuffer = new ProtonNettyByteBuffer(Unpooled.buffer(FRAME_SIZE));
         for (int i = 0; i < FRAME_SIZE; ++i) {
             sendBuffer.writeByte('A' + (i % 10));
         }
@@ -228,16 +230,16 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
 
             assertEquals("Expected 2 data packets due to seperate websocket frames", 2, data.size());
 
-            ByteBuf receivedBuffer = Unpooled.buffer(FRAME_SIZE);
-            for(ByteBuf buf : data) {
-               buf.readBytes(receivedBuffer, buf.readableBytes());
+            ProtonBuffer receivedBuffer = new ProtonNettyByteBuffer(Unpooled.buffer(FRAME_SIZE));
+            for (ProtonBuffer buf : data) {
+               buf.readBytes(receivedBuffer, buf.getReadableBytes());
             }
 
-            assertEquals("Unexpected data length", FRAME_SIZE, receivedBuffer.readableBytes());
-            assertTrue("Unexpected data", ByteBufUtil.equals(sendBuffer, 0, receivedBuffer, 0, FRAME_SIZE));
+            assertEquals("Unexpected data length", FRAME_SIZE, receivedBuffer.getReadableBytes());
+            assertEquals("Unexpected data", sendBuffer, receivedBuffer);
         } finally {
-            for (ByteBuf buf : data) {
-                buf.release();
+            for (ProtonBuffer buf : data) {
+                ((ByteBuf) buf.unwrap()).release();
             }
         }
 
@@ -270,7 +272,7 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
                 transport.setMaxFrameSize(FRAME_SIZE / 2);
                 transport.connect(null, null);
                 transports.add(transport);
-                transport.writeAndFlush(sendBuffer.copy());
+                transport.writeAndFlush(new ProtonNettyByteBuffer(sendBuffer.copy()));
             } catch (Exception e) {
                 fail("Should have connected to the server at " + serverLocation + " but got exception: " + e);
             }
@@ -306,7 +308,7 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
                 transport.setMaxFrameSize(FRAME_SIZE);
                 transport.connect(null, null);
                 transports.add(transport);
-                transport.writeAndFlush(sendBuffer.copy());
+                transport.writeAndFlush(new ProtonNettyByteBuffer(sendBuffer.copy()));
             } catch (Exception e) {
                 fail("Should have connected to the server at " + serverLocation + " but got exception: " + e);
             }
@@ -315,7 +317,7 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
                 @Override
                 public boolean isSatisfied() throws Exception {
                     try {
-                        transport.writeAndFlush(sendBuffer.copy());
+                        transport.writeAndFlush(new ProtonNettyByteBuffer(sendBuffer.copy()));
                     } catch (IOException e) {
                         LOG.info("Transport send caught error:", e);
                         return true;

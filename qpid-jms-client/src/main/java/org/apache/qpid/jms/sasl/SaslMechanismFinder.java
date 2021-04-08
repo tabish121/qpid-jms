@@ -16,15 +16,16 @@
  */
 package org.apache.qpid.jms.sasl;
 
-import java.security.Principal;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
-import java.util.Set;
 
 import org.apache.qpid.jms.util.FactoryFinder;
 import org.apache.qpid.jms.util.ResourceNotFoundException;
+import org.apache.qpid.protonj2.engine.sasl.client.Mechanism;
+import org.apache.qpid.protonj2.engine.sasl.client.SaslCredentialsProvider;
+import org.apache.qpid.protonj2.engine.sasl.client.SaslMechanismSelector;
+import org.apache.qpid.protonj2.engine.util.StringUtils;
+import org.apache.qpid.protonj2.types.Symbol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +38,7 @@ import org.slf4j.LoggerFactory;
  * final selection based on the Mechanism in the found set that has the
  * highest priority value.
  */
-public class SaslMechanismFinder {
+public class SaslMechanismFinder extends SaslMechanismSelector {
 
     private static final Logger LOG = LoggerFactory.getLogger(SaslMechanismFinder.class);
 
@@ -45,67 +46,19 @@ public class SaslMechanismFinder {
         new FactoryFinder<MechanismFactory>(MechanismFactory.class,
             "META-INF/services/" + SaslMechanismFinder.class.getPackage().getName().replace(".", "/") + "/");
 
-    /**
-     * Attempts to find a matching Mechanism implementation given a list of supported
-     * mechanisms from a remote peer.  Can return null if no matching Mechanisms are
-     * found.
-     *
-     * @param username
-     *        the user name, or null if there is none
-     * @param password
-     *        the password, or null if there is none
-     * @param localPrincipal
-     *        the Principal associated with the transport, or null if there is none
-     * @param mechRestrictions
-     *        The possible mechanism(s) to which the client should restrict its
-     *        mechanism selection to if offered by the server, or null if there
-     *        is no restriction
-     * @param remoteMechanisms
-     *        list of mechanism names that are supported by the remote peer.
-     *
-     * @return the best matching Mechanism for the supported remote set.
-     *
-     * @throws SaslSecurityRuntimeException if no matching mechanism can be identified
-     */
-    public static Mechanism findMatchingMechanism(String username, String password, Principal localPrincipal, Set<String> mechRestrictions, String... remoteMechanisms) throws SaslSecurityRuntimeException {
+    @SuppressWarnings("unchecked")
+    public SaslMechanismFinder(Collection<String> allowed) {
+        super(allowed != null ? StringUtils.toSymbolSet(allowed) : Collections.EMPTY_SET);
+    }
 
-        Mechanism match = null;
-        List<Mechanism> found = new ArrayList<Mechanism>();
-        List<String> remoteMechanismNames = Arrays.asList(remoteMechanisms);
-
-        for (String remoteMechanism : remoteMechanismNames) {
-            MechanismFactory factory = findMechanismFactory(remoteMechanism);
-            if (factory != null) {
-                Mechanism mech = factory.createMechanism();
-
-                boolean mechConfigured = mechRestrictions != null && mechRestrictions.contains(remoteMechanism);
-                if (mechRestrictions != null && !mechConfigured) {
-                    LOG.trace("Skipping {} mechanism because it is not in the configured mechanisms restriction set", remoteMechanism);
-                } else if (mech.isApplicable(username, password, localPrincipal)) {
-                    if (mech.isEnabledByDefault() || mechConfigured) {
-                        found.add(mech);
-                    } else {
-                        LOG.trace("Skipping {} mechanism as it must be explicitly enabled in the configured sasl mechanisms", mech);
-                    }
-                } else {
-                    LOG.trace("Skipping {} mechanism because the available credentials are not sufficient", mech);
-                }
-            }
-        }
-
-        if (!found.isEmpty()) {
-            // Sorts by priority using Mechanism comparison and return the last value in
-            // list which is the Mechanism deemed to be the highest priority match.
-            Collections.sort(found);
-            match = found.get(found.size() - 1);
+    @Override
+    protected Mechanism createMechanism(Symbol name, SaslCredentialsProvider credentials) {
+        MechanismFactory factory = findMechanismFactory(name.toString());
+        if (factory != null) {
+            return factory.createMechanism();
         } else {
-            throw new SaslSecurityRuntimeException(
-                "No supported mechanism, or none usable with the available credentials. Server offered: " + remoteMechanismNames);
+            return super.createMechanism(name, credentials);
         }
-
-        LOG.debug("Best match for SASL auth was: {}", match);
-
-        return match;
     }
 
     /**

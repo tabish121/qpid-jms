@@ -16,8 +16,11 @@
  */
 package org.apache.qpid.jms.provider.exceptions;
 
+import javax.security.sasl.SaslException;
+
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.sasl.SaslSecurityRuntimeException;
+import org.apache.qpid.protonj2.engine.exceptions.EngineStateException;
 
 public class ProviderExceptionSupport {
 
@@ -40,8 +43,10 @@ public class ProviderExceptionSupport {
             message = cause.toString();
         }
 
-        if (cause instanceof SaslSecurityRuntimeException) {
+        if (cause instanceof SaslException || cause instanceof SaslSecurityRuntimeException) {
             return new ProviderConnectionSecurityException(message, cause);
+        } else if (cause instanceof EngineStateException && cause.getCause() != null) {
+            return new ProviderIOException(message, cause.getCause());
         } else {
             return new ProviderIOException(message, cause);
         }

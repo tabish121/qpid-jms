@@ -16,19 +16,23 @@
  */
 package org.apache.qpid.jms.provider.amqp.builders;
 
+import java.util.UUID;
+
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
 import org.apache.qpid.jms.provider.AsyncResult;
-import org.apache.qpid.jms.provider.amqp.AmqpConnection;
 import org.apache.qpid.jms.provider.amqp.AmqpProvider;
+import org.apache.qpid.protonj2.engine.Connection;
 
 /**
- * Specialized Builder that create a Connection that is intended to be immediately
- * closed.
+ * AMQP {@link Connection} builder that creates and closes the connection immediately
+ * to allow completion of a normal open in the case of quick create / destroy of a JMS
+ * Connection where SASL negotiations have completed and the remote would be expecting
+ * a normal connection open and close to occur.
  */
 public class AmqpClosedConnectionBuilder extends AmqpConnectionBuilder {
 
-    public AmqpClosedConnectionBuilder(AmqpProvider parent, JmsConnectionInfo resourceInfo) {
-        super(parent, resourceInfo);
+    public AmqpClosedConnectionBuilder(AmqpProvider provider, JmsConnectionInfo resourceInfo) {
+        super(provider, resourceInfo);
     }
 
     @Override
@@ -37,14 +41,25 @@ public class AmqpClosedConnectionBuilder extends AmqpConnectionBuilder {
     }
 
     @Override
-    protected void afterOpened() {
+    protected void processEndpointRemotelyOpened(Connection connection, JmsConnectionInfo resourceInfo) {
+        // Close immediately as we've indicated that a close is pending, this will prompt the
+        // remote to actually send a close even if one wasn't incoming.
         getEndpoint().close();
     }
 
     @Override
-    protected void afterClosed(AmqpConnection resource, JmsConnectionInfo resourceInfo) {
+    protected Connection createEndpoint(JmsConnectionInfo resourceInfo) {
+        if (resourceInfo.getClientId() == null) {
+            resourceInfo.setClientId(UUID.randomUUID().toString(), true);
+        }
+
+        return super.createEndpoint(resourceInfo);
+    }
+
+    @Override
+    protected void processEndpointRemotelyClosed(Connection connection, JmsConnectionInfo resourceInfo) {
         // If the resource closed and no error was given, we just closed it now to avoid
-        // failing the request with a default error which creates log spam.
+        // failing the request with a default error which creates additional logging.
         if (!hasRemoteError()) {
             request.onSuccess();
         }

@@ -18,7 +18,6 @@
  */
 package org.apache.qpid.jms.integration;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SHARED_SUBS;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SUB_NAME_DELIMITER;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
@@ -62,10 +61,10 @@ public class SubscriptionsIntegrationTest extends QpidJmsTestCase {
 
     @Test
     public void testConstants() throws Exception {
-        assertEquals(Symbol.valueOf("SHARED-SUBS"), AmqpSupport.SHARED_SUBS);
+        assertEquals(org.apache.qpid.protonj2.types.Symbol.valueOf("SHARED-SUBS"), AmqpSupport.SHARED_SUBS);
         assertEquals("|", AmqpSupport.SUB_NAME_DELIMITER);
-        assertEquals(Symbol.valueOf("shared"), AmqpSupport.SHARED);
-        assertEquals(Symbol.valueOf("global"), AmqpSupport.GLOBAL);
+        assertEquals(org.apache.qpid.protonj2.types.Symbol.valueOf("shared"), AmqpSupport.SHARED);
+        assertEquals(org.apache.qpid.protonj2.types.Symbol.valueOf("global"), AmqpSupport.GLOBAL);
     }
 
     /**
@@ -884,7 +883,7 @@ public class SubscriptionsIntegrationTest extends QpidJmsTestCase {
     private void doUnsubscribeNonExistingSubscriptionTestImpl(boolean hasClientID) throws JMSException, InterruptedException, Exception, IOException {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection;
-            if(hasClientID) {
+            if (hasClientID) {
                 connection = testFixture.establishConnecton(testPeer);
             } else {
                 connection = testFixture.establishConnectonWithoutClientID(testPeer, null);
@@ -897,7 +896,7 @@ public class SubscriptionsIntegrationTest extends QpidJmsTestCase {
             String subscriptionName = "myInvalidSubscriptionName";
             // Try to unsubscribe non-existing subscription
             testPeer.expectDurableSubUnsubscribeNullSourceLookup(true, false, subscriptionName, null, hasClientID);
-            testPeer.expectDetach(true, true, true);
+            testPeer.expectDetach(true, false, false);
 
             try {
                 session.unsubscribe(subscriptionName);

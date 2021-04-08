@@ -19,25 +19,26 @@ package org.apache.qpid.jms.provider.amqp.builders;
 import org.apache.qpid.jms.meta.JmsSessionInfo;
 import org.apache.qpid.jms.provider.amqp.AmqpTransactionContext;
 import org.apache.qpid.jms.provider.amqp.AmqpTransactionCoordinator;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.Accepted;
-import org.apache.qpid.proton.amqp.messaging.Modified;
-import org.apache.qpid.proton.amqp.messaging.Rejected;
-import org.apache.qpid.proton.amqp.messaging.Released;
-import org.apache.qpid.proton.amqp.messaging.Source;
-import org.apache.qpid.proton.amqp.transaction.Coordinator;
-import org.apache.qpid.proton.amqp.transaction.TxnCapability;
-import org.apache.qpid.proton.amqp.transport.ReceiverSettleMode;
-import org.apache.qpid.proton.amqp.transport.SenderSettleMode;
-import org.apache.qpid.proton.engine.Sender;
+import org.apache.qpid.protonj2.engine.Endpoint;
+import org.apache.qpid.protonj2.engine.Sender;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.Accepted;
+import org.apache.qpid.protonj2.types.messaging.Modified;
+import org.apache.qpid.protonj2.types.messaging.Rejected;
+import org.apache.qpid.protonj2.types.messaging.Released;
+import org.apache.qpid.protonj2.types.messaging.Source;
+import org.apache.qpid.protonj2.types.transactions.Coordinator;
+import org.apache.qpid.protonj2.types.transactions.TxnCapability;
+import org.apache.qpid.protonj2.types.transport.ReceiverSettleMode;
+import org.apache.qpid.protonj2.types.transport.SenderSettleMode;
 
 /**
- * Resource builder responsible for creating and opening an AmqpTransactionCoordinator instance.
+ * AMQP Transaction Coordinator {@link Endpoint} builder.
  */
-public class AmqpTransactionCoordinatorBuilder extends AmqpResourceBuilder<AmqpTransactionCoordinator, AmqpTransactionContext, JmsSessionInfo, Sender> {
+public class AmqpTransactionCoordinatorBuilder extends AmqpEndpointBuilder<AmqpTransactionCoordinator, AmqpTransactionContext, JmsSessionInfo, Sender> {
 
-    public AmqpTransactionCoordinatorBuilder(AmqpTransactionContext parent, JmsSessionInfo resourceInfo) {
-        super(parent, resourceInfo);
+    public AmqpTransactionCoordinatorBuilder(AmqpTransactionContext context, JmsSessionInfo resourceInfo) {
+        super(context.getProvider(), context, resourceInfo);
     }
 
     @Override
@@ -45,7 +46,10 @@ public class AmqpTransactionCoordinatorBuilder extends AmqpResourceBuilder<AmqpT
         Coordinator coordinator = new Coordinator();
         coordinator.setCapabilities(TxnCapability.LOCAL_TXN);
 
-        Symbol[] outcomes = new Symbol[]{ Accepted.DESCRIPTOR_SYMBOL, Rejected.DESCRIPTOR_SYMBOL, Released.DESCRIPTOR_SYMBOL, Modified.DESCRIPTOR_SYMBOL };
+        Symbol[] outcomes = new Symbol[]{ Accepted.DESCRIPTOR_SYMBOL,
+                                          Rejected.DESCRIPTOR_SYMBOL,
+                                          Released.DESCRIPTOR_SYMBOL,
+                                          Modified.DESCRIPTOR_SYMBOL };
 
         Source source = new Source();
         source.setOutcomes(outcomes);
@@ -62,8 +66,8 @@ public class AmqpTransactionCoordinatorBuilder extends AmqpResourceBuilder<AmqpT
     }
 
     @Override
-    protected AmqpTransactionCoordinator createResource(AmqpTransactionContext parent, JmsSessionInfo resourceInfo, Sender endpoint) {
-        return new AmqpTransactionCoordinator(resourceInfo, endpoint, parent);
+    protected AmqpTransactionCoordinator createResource(AmqpTransactionContext context, JmsSessionInfo resourceInfo, Sender sender) {
+        return new AmqpTransactionCoordinator(context, resourceInfo, sender);
     }
 
     @Override

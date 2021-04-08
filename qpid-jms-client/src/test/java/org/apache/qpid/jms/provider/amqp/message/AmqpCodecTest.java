@@ -20,7 +20,7 @@
  */
 package org.apache.qpid.jms.provider.amqp.message;
 
-import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.encodeMessage;
+import static org.apache.qpid.jms.provider.amqp.message.AmqpMessage.encodeMessage;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -54,22 +54,15 @@ import org.apache.qpid.jms.meta.JmsConsumerInfo;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
-import org.apache.qpid.proton.Proton;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.UnsignedInteger;
-import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.Header;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.message.Message;
-import org.apache.qpid.proton.message.impl.MessageImpl;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
-
-import io.netty.buffer.ByteBuf;
 
 public class AmqpCodecTest extends QpidJmsTestCase {
 
@@ -87,82 +80,13 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         Mockito.when(mockConsumer.getResourceInfo()).thenReturn(new JmsConsumerInfo(consumerId, null));
     }
 
-    //----- AmqpHeader encode and decode -------------------------------------//
-
-    @Test
-    public void testEncodeEmptyHeaderAndDecode() {
-        Header empty = new Header();
-
-        ByteBuf encoded = AmqpCodec.encode(empty);
-        Header decoded = (Header) AmqpCodec.decode(encoded);
-
-        assertNotNull(decoded);
-
-        AmqpHeader header = new AmqpHeader(decoded);
-
-        assertFalse(header.isDurable());
-        assertEquals(4, header.getPriority());
-        assertEquals(0, header.getTimeToLive());
-        assertFalse(header.isFirstAcquirer());
-        assertEquals(0, header.getDeliveryCount());
-    }
-
-    @Test
-    public void testEncodeHeaderWithDurableAndDecode() {
-        AmqpHeader header = new AmqpHeader();
-        header.setDurable(true);
-
-        ByteBuf encoded = AmqpCodec.encode(header.getHeader());
-        AmqpHeader decoded = new AmqpHeader((Header) AmqpCodec.decode(encoded));
-
-        assertTrue(decoded.isDurable());
-        assertEquals(4, decoded.getPriority());
-        assertEquals(0, decoded.getTimeToLive());
-        assertFalse(decoded.isFirstAcquirer());
-        assertEquals(0, decoded.getDeliveryCount());
-    }
-
-    @Test
-    public void testEncodeHeaderWithDeliveryCountAndDecode() {
-        AmqpHeader header = new AmqpHeader();
-        header.setDeliveryCount(1);
-
-        ByteBuf encoded = AmqpCodec.encode(header.getHeader());
-        AmqpHeader decoded = new AmqpHeader((Header) AmqpCodec.decode(encoded));
-
-        assertFalse(decoded.isDurable());
-        assertEquals(4, decoded.getPriority());
-        assertEquals(0, decoded.getTimeToLive());
-        assertFalse(decoded.isFirstAcquirer());
-        assertEquals(1, decoded.getDeliveryCount());
-    }
-
-    @Test
-    public void testEncodeHeaderWithAllSetAndDecode() {
-        AmqpHeader header = new AmqpHeader();
-        header.setDurable(true);
-        header.setDeliveryCount(43);
-        header.setFirstAcquirer(true);
-        header.setPriority(9);
-        header.setTimeToLive(32768);
-
-        ByteBuf encoded = AmqpCodec.encode(header.getHeader());
-        AmqpHeader decoded = new AmqpHeader((Header) AmqpCodec.decode(encoded));
-
-        assertTrue(decoded.isDurable());
-        assertTrue(decoded.isFirstAcquirer());
-        assertEquals(43, decoded.getDeliveryCount());
-        assertEquals(9, decoded.getPriority());
-        assertEquals(32768, decoded.getTimeToLive());
-    }
-
     //----- AmqpHeader handling on message decode ----------------------------//
 
     @Test
     public void testPersistentSetFromMessageWithNonDefaultValue() throws Exception {
-        MessageImpl message = (MessageImpl) Message.Factory.create();
-        message.setDurable(true);
-        message.setBody(new AmqpValue("test"));
+        AmqpMessage message = new AmqpMessage();
+        message.durable(true);
+        message.body(new AmqpValue<String>("test"));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -177,9 +101,9 @@ public class AmqpCodecTest extends QpidJmsTestCase {
 
     @Test
     public void testMessagePrioritySetFromMessageWithNonDefaultValue() throws Exception {
-        MessageImpl message = (MessageImpl) Message.Factory.create();
-        message.setPriority((short) 8);
-        message.setBody(new AmqpValue("test"));
+        AmqpMessage message = new AmqpMessage();
+        message.priority((byte) 8);
+        message.body(new AmqpValue<String>("test"));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -194,9 +118,9 @@ public class AmqpCodecTest extends QpidJmsTestCase {
 
     @Test
     public void testFirstAcquirerSetFromMessageWithNonDefaultValue() throws Exception {
-        MessageImpl message = (MessageImpl) Message.Factory.create();
-        message.setFirstAcquirer(true);
-        message.setBody(new AmqpValue("test"));
+        AmqpMessage message = new AmqpMessage();
+        message.firstAcquirer(true);
+        message.body(new AmqpValue<String>("test"));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -205,14 +129,14 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         assertEquals("Unexpected facade class type", AmqpJmsTextMessageFacade.class, jmsMessage.getFacade().getClass());
         AmqpJmsTextMessageFacade facade = (AmqpJmsTextMessageFacade) jmsMessage.getFacade();
         assertNotNull("Facade should not be null", facade);
-        assertTrue(facade.getAmqpHeader().isFirstAcquirer());
+        assertTrue(facade.getHeader().isFirstAcquirer());
     }
 
     @Test
     public void testTimeToLiveSetFromMessageWithNonDefaultValue() throws Exception {
-        MessageImpl message = (MessageImpl) Message.Factory.create();
-        message.setTtl(65535);
-        message.setBody(new AmqpValue("test"));
+        AmqpMessage message = new AmqpMessage();
+        message.timeToLive(65535);
+        message.body(new AmqpValue<String>("test"));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -221,14 +145,14 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         assertEquals("Unexpected facade class type", AmqpJmsTextMessageFacade.class, jmsMessage.getFacade().getClass());
         AmqpJmsTextMessageFacade facade = (AmqpJmsTextMessageFacade) jmsMessage.getFacade();
         assertNotNull("Facade should not be null", facade);
-        assertEquals(65535, facade.getAmqpHeader().getTimeToLive());
+        assertEquals(65535, facade.getHeader().getTimeToLive());
     }
 
     @Test
     public void testDeliveryCountSetFromMessageWithNonDefaultValue() throws Exception {
-        MessageImpl message = (MessageImpl) Message.Factory.create();
-        message.setDeliveryCount(2);
-        message.setBody(new AmqpValue("test"));
+        AmqpMessage message = new AmqpMessage();
+        message.deliveryCount(2);
+        message.body(new AmqpValue<String>("test"));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -239,8 +163,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         AmqpJmsTextMessageFacade facade = (AmqpJmsTextMessageFacade) jmsMessage.getFacade();
         assertNotNull("Facade should not be null", facade);
         assertEquals(2, facade.getRedeliveryCount());
-        assertEquals(2, facade.getAmqpHeader().getDeliveryCount());
-        assertEquals(UnsignedInteger.valueOf(2), facade.getHeader().getDeliveryCount());
+        assertEquals(2, facade.getHeader().getDeliveryCount());
     }
 
     // =============== With The Message Type Annotation =========
@@ -255,7 +178,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test(expected = IOException.class)
     public void testCreateMessageFromUnknownMessageTypeAnnotationValueThrows() throws Exception {
-        Message message = Proton.message();
+        AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> map = new HashMap<Symbol, Object>();
         map.put(AmqpMessageSupport.JMS_MSG_TYPE, (byte) -1);
@@ -275,7 +198,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateGenericMessageFromMessageTypeAnnotation() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> map = new HashMap<Symbol, Object>();
         map.put(AmqpMessageSupport.JMS_MSG_TYPE, AmqpMessageSupport.JMS_MESSAGE);
@@ -301,7 +224,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateBytesMessageFromMessageTypeAnnotation() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> map = new HashMap<Symbol, Object>();
         map.put(AmqpMessageSupport.JMS_MSG_TYPE, AmqpMessageSupport.JMS_BYTES_MESSAGE);
@@ -327,7 +250,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateTextMessageFromMessageTypeAnnotation() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> map = new HashMap<Symbol, Object>();
         map.put(AmqpMessageSupport.JMS_MSG_TYPE, AmqpMessageSupport.JMS_TEXT_MESSAGE);
@@ -372,7 +295,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
     }
 
     private void createObjectMessageFromMessageTypeAnnotationTestImpl(boolean setJavaSerializedContentType) throws Exception {
-        Message message = Proton.message();
+        AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> map = new HashMap<Symbol, Object>();
         map.put(AmqpMessageSupport.JMS_MSG_TYPE, AmqpMessageSupport.JMS_OBJECT_MESSAGE);
@@ -381,7 +304,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         message.setMessageAnnotations(messageAnnotations);
 
         if (setJavaSerializedContentType) {
-            message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
+            message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
         }
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
@@ -409,7 +332,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateStreamMessageFromMessageTypeAnnotation() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> map = new HashMap<Symbol, Object>();
         map.put(AmqpMessageSupport.JMS_MSG_TYPE, AmqpMessageSupport.JMS_STREAM_MESSAGE);
@@ -440,8 +363,8 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateBytesMessageFromNoBodySectionAndContentType() throws Exception {
-        Message message = Proton.message();
-        message.setContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
+        AmqpMessage message = new AmqpMessage();
+        message.contentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -460,9 +383,9 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateBytesMessageFromNoBodySectionAndNoContentType() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
-        assertNull(message.getContentType());
+        assertNull(message.contentType());
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -482,8 +405,8 @@ public class AmqpCodecTest extends QpidJmsTestCase {
     */
     @Test
     public void testCreateObjectMessageFromNoBodySectionAndContentType() throws Exception {
-        Message message = Proton.message();
-        message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
+        AmqpMessage message = new AmqpMessage();
+        message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -499,8 +422,8 @@ public class AmqpCodecTest extends QpidJmsTestCase {
 
     @Test
     public void testCreateTextMessageFromNoBodySectionAndContentType() throws Exception {
-        Message message = Proton.message();
-        message.setContentType("text/plain");
+        final AmqpMessage message = new AmqpMessage();
+        message.contentType("text/plain");
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -519,8 +442,8 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      * @throws Exception if an error occurs during the test.
      */
     public void testCreateGenericMessageFromNoBodySectionAndUnknownContentType() throws Exception {
-        Message message = Proton.message();
-        message.setContentType("unknown-content-type");
+        final AmqpMessage message = new AmqpMessage();
+        message.contentType("unknown-content-type");
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -542,10 +465,10 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateBytesMessageFromDataWithEmptyBinaryAndContentType() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Binary binary = new Binary(new byte[0]);
-        message.setBody(new Data(binary));
-        message.setContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
+        message.body(new Data(binary));
+        message.contentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -564,10 +487,10 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      * @throws Exception if an error occurs during the test.
      */
     public void testCreateBytesMessageFromDataWithUnknownContentType() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Binary binary = new Binary(new byte[0]);
-        message.setBody(new Data(binary));
-        message.setContentType("unknown-content-type");
+        message.body(new Data(binary));
+        message.contentType("unknown-content-type");
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -587,11 +510,11 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateBytesMessageFromDataWithEmptyBinaryAndNoContentType() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Binary binary = new Binary(new byte[0]);
-        message.setBody(new Data(binary));
+        message.body(new Data(binary));
 
-        assertNull(message.getContentType());
+        assertNull(message.contentType());
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -611,10 +534,10 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateObjectMessageFromDataWithContentTypeAndEmptyBinary() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Binary binary = new Binary(new byte[0]);
-        message.setBody(new Data(binary));
-        message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
+        message.body(new Data(binary));
+        message.contentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE.toString());
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -724,10 +647,10 @@ public class AmqpCodecTest extends QpidJmsTestCase {
     }
 
     private void doCreateTextMessageFromDataWithContentTypeTestImpl(String contentType, Charset expectedCharset) throws IOException {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Binary binary = new Binary(new byte[0]);
-        message.setBody(new Data(binary));
-        message.setContentType(contentType);
+        message.body(new Data(binary));
+        message.contentType(contentType);
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -751,8 +674,8 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateTextMessageFromAmqpValueWithString() throws Exception {
-        Message message = Proton.message();
-        message.setBody(new AmqpValue("content"));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<String>("content"));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -771,8 +694,8 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateTextMessageFromAmqpValueWithNull() throws Exception {
-        Message message = Proton.message();
-        message.setBody(new AmqpValue(null));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<String>(null));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -791,9 +714,9 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateAmqpObjectMessageFromAmqpValueWithMap() throws Exception {
-        Message message = Proton.message();
+        AmqpMessage message = new AmqpMessage();
         Map<String, String> map = new HashMap<String,String>();
-        message.setBody(new AmqpValue(map));
+        message.body(new AmqpValue<Map<String, String>>(map));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -815,9 +738,9 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateAmqpObjectMessageFromAmqpValueWithList() throws Exception {
-        Message message = Proton.message();
+        AmqpMessage message = new AmqpMessage();
         List<String> list = new ArrayList<String>();
-        message.setBody(new AmqpValue(list));
+        message.body(new AmqpValue<>(list));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -839,9 +762,9 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateAmqpBytesMessageFromAmqpValueWithBinary() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Binary binary = new Binary(new byte[0]);
-        message.setBody(new AmqpValue(binary));
+        message.body(new AmqpValue<>(binary));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -860,8 +783,8 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateObjectMessageFromAmqpValueWithUncategorisedContent() throws Exception {
-        Message message = Proton.message();
-        message.setBody(new AmqpValue(UUID.randomUUID()));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<UUID>(UUID.randomUUID()));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -885,9 +808,9 @@ public class AmqpCodecTest extends QpidJmsTestCase {
      */
     @Test
     public void testCreateObjectMessageMessageFromAmqpSequence() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         List<String> list = new ArrayList<String>();
-        message.setBody(new AmqpSequence(list));
+        message.body(new AmqpSequence<String>(list));
 
         JmsMessage jmsMessage = AmqpCodec.decodeMessage(mockConsumer, encodeMessage(message)).asJmsMessage();
         assertNotNull("Message should not be null", jmsMessage);
@@ -951,7 +874,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         // and not be using the globally cached bits, this checks that nothing NPEs or otherwise
         // fails and should show in test coverage that the cache fill + cache use is exercised.
         for (int i = 0; i <= 2; ++i) {
-            MessageImpl amqpMessage = (MessageImpl) AmqpMessageSupport.decodeMessage(AmqpCodec.encodeMessage(message));
+            final AmqpMessage amqpMessage = AmqpMessage.decode(AmqpCodec.encodeMessage(message));
 
             MessageAnnotations messageAnnotations = amqpMessage.getMessageAnnotations();
             assertNotNull(messageAnnotations);

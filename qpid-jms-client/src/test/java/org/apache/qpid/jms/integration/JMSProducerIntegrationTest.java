@@ -18,7 +18,6 @@
  */
 package org.apache.qpid.jms.integration;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.ANONYMOUS_RELAY;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
@@ -88,8 +87,7 @@ public class JMSProducerIntegrationTest extends QpidJmsTestCase {
 
             // Verify sent message contains expected destination address and dest type annotation
             MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            Symbol annotationKey = AmqpDestinationHelper.JMS_DEST_TYPE_MSG_ANNOTATION_SYMBOL;
-            msgAnnotationsMatcher.withEntry(annotationKey, equalTo(AmqpDestinationHelper.TOPIC_TYPE));
+            msgAnnotationsMatcher.withEntry(JMS_DEST_TYPE_MSG_ANNOTATION_SYMBOL, equalTo(AmqpDestinationHelper.TOPIC_TYPE));
 
             MessagePropertiesSectionMatcher propsMatcher = new MessagePropertiesSectionMatcher(true).withTo(equalTo(topicName));
 

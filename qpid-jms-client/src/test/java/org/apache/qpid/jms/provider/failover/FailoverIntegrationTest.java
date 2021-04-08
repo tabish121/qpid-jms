@@ -16,7 +16,6 @@
  */
 package org.apache.qpid.jms.provider.failover;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DELAYED_DELIVERY;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.arrayContaining;
@@ -76,7 +75,6 @@ import org.apache.qpid.jms.JmsQueue;
 import org.apache.qpid.jms.JmsResourceNotFoundException;
 import org.apache.qpid.jms.JmsSendTimedOutException;
 import org.apache.qpid.jms.policy.JmsDefaultPrefetchPolicy;
-import org.apache.qpid.jms.provider.amqp.AmqpSupport;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.Wait;
 import org.apache.qpid.jms.test.testpeer.ListDescribedType;
@@ -488,10 +486,10 @@ public class FailoverIntegrationTest extends QpidJmsTestCase {
             Map<Symbol, Object> errorInfo = null;
             if (includeContainerIdHint) {
                 errorInfo = new HashMap<Symbol, Object>();
-                errorInfo.put(AmqpSupport.INVALID_FIELD, AmqpSupport.CONTAINER_ID);
+                errorInfo.put(TestAmqpPeer.INVALID_FIELD, TestAmqpPeer.CONTAINER_ID);
             }
 
-            originalPeer.rejectConnect(AmqpError.INVALID_FIELD, "Client ID already in use", errorInfo);
+            originalPeer.rejectConnect(TestAmqpPeer.INVALID_FIELD, "Client ID already in use", errorInfo);
 
             finalPeer.expectSaslAnonymous();
             finalPeer.expectOpen();
@@ -563,7 +561,7 @@ public class FailoverIntegrationTest extends QpidJmsTestCase {
             Map<Symbol, Object> errorInfo = null;
             if (includeContainerIdHint) {
                 errorInfo = new HashMap<Symbol, Object>();
-                errorInfo.put(AmqpSupport.INVALID_FIELD, AmqpSupport.CONTAINER_ID);
+                errorInfo.put(TestAmqpPeer.INVALID_FIELD, TestAmqpPeer.CONTAINER_ID);
             }
             rejectingPeer.rejectConnect(AmqpError.INVALID_FIELD, "Client ID already in use", errorInfo);
 
@@ -4670,7 +4668,7 @@ public class FailoverIntegrationTest extends QpidJmsTestCase {
             JmsConnection connection = establishAnonymousConnecton(testPeer);
             connection.start();
 
-            Matcher<Symbol[]> desiredCapabilitiesMatcher = arrayContaining(new Symbol[] { DELAYED_DELIVERY });
+            Matcher<Symbol[]> desiredCapabilitiesMatcher = arrayContaining(new Symbol[] { TestAmqpPeer.DELAYED_DELIVERY });
             Symbol[] offeredCapabilities = null;
             testPeer.expectSenderAttach(notNullValue(), notNullValue(), false, false, false, false, 0, 1, null, null, desiredCapabilitiesMatcher, offeredCapabilities);
 

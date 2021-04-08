@@ -24,8 +24,8 @@ import java.nio.ByteBuffer;
 import java.util.UUID;
 
 import org.apache.qpid.jms.exceptions.IdConversionException;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.UnsignedLong;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.UnsignedLong;
 
 /**
  * Helper class for identifying and converting message-id and correlation-id values between
@@ -271,7 +271,7 @@ public class AmqpMessageIdHelper {
         return binary;
     }
 
-    private static  int hexCharToInt(char ch, String orig) throws IllegalArgumentException {
+    private static int hexCharToInt(char ch, String orig) throws IllegalArgumentException {
         if (ch >= '0' && ch <= '9') {
             // subtract '0' to get difference in position as an int
             return ch - '0';

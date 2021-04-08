@@ -38,6 +38,18 @@ public interface JmsResourceId {
     Object getProviderHint();
 
     /**
+     * Return the previously stored Provider hint object.
+     *
+     * @param desiredType
+     * 		The class that indicates the type that should be returned from this method
+     *
+     * @param <T> The type that is returned from this method.
+     *
+     * @return the previously stored Provider hint object.
+     */
+    <T> T getProviderHint(Class<T> desiredType);
+
+    /**
      * Allows a Provider to embed a bit of Context for later use.  The context
      * can be some state data needed between asynchronous requests etc.
      *

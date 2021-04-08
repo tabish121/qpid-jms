@@ -16,7 +16,6 @@
  */
 package org.apache.qpid.jms.provider.failover;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SCHEME;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -935,9 +934,9 @@ public class FailoverWithAmqpOpenProvidedServerListIntegrationTest extends QpidJ
 
             // Set the primary up to expect the connection, have the failover list containing the backup advertised
             Map<Symbol,Object> backupPeerDetails = new HashMap<>();
-            backupPeerDetails.put(NETWORK_HOST, "localhost");
-            backupPeerDetails.put(PORT, 5673);
-            backupPeerDetails.put(SCHEME, "amqp");
+            backupPeerDetails.put(TestAmqpPeer.NETWORK_HOST, "localhost");
+            backupPeerDetails.put(TestAmqpPeer.PORT, 5673);
+            backupPeerDetails.put(TestAmqpPeer.SCHEME, "amqp");
 
             List<Map<Symbol, Object>> failoverServerList = new ArrayList<Map<Symbol, Object>>();
             failoverServerList.add(backupPeerDetails);
@@ -1043,9 +1042,9 @@ public class FailoverWithAmqpOpenProvidedServerListIntegrationTest extends QpidJ
 
             // Set the primary up to expect the connection, have the failover list containing the backup advertised
             Map<Symbol,Object> backupPeerDetails = new HashMap<>();
-            backupPeerDetails.put(NETWORK_HOST, "localhost");
-            backupPeerDetails.put(PORT, 5673);
-            backupPeerDetails.put(SCHEME, transportScheme);
+            backupPeerDetails.put(TestAmqpPeer.NETWORK_HOST, "localhost");
+            backupPeerDetails.put(TestAmqpPeer.PORT, 5673);
+            backupPeerDetails.put(TestAmqpPeer.SCHEME, transportScheme);
 
             List<Map<Symbol, Object>> failoverServerList = new ArrayList<Map<Symbol, Object>>();
             failoverServerList.add(backupPeerDetails);

@@ -22,9 +22,9 @@ import static org.apache.qpid.jms.provider.amqp.AmqpSupport.JMS_SELECTOR_SYMBOL;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.MODIFIED_FAILED;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SHARED_SUBS;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
@@ -35,7 +35,6 @@ import org.apache.qpid.jms.meta.JmsConsumerInfo;
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
-import org.apache.qpid.jms.provider.amqp.AmqpProvider;
 import org.apache.qpid.jms.provider.amqp.AmqpSession;
 import org.apache.qpid.jms.provider.amqp.AmqpSubscriptionTracker;
 import org.apache.qpid.jms.provider.amqp.AmqpSupport;
@@ -44,30 +43,31 @@ import org.apache.qpid.jms.provider.amqp.filters.AmqpJmsSelectorType;
 import org.apache.qpid.jms.provider.amqp.message.AmqpDestinationHelper;
 import org.apache.qpid.jms.provider.exceptions.ProviderInvalidDestinationException;
 import org.apache.qpid.jms.provider.exceptions.ProviderUnsupportedOperationException;
-import org.apache.qpid.proton.amqp.DescribedType;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.Accepted;
-import org.apache.qpid.proton.amqp.messaging.Modified;
-import org.apache.qpid.proton.amqp.messaging.Rejected;
-import org.apache.qpid.proton.amqp.messaging.Released;
-import org.apache.qpid.proton.amqp.messaging.Source;
-import org.apache.qpid.proton.amqp.messaging.Target;
-import org.apache.qpid.proton.amqp.messaging.TerminusDurability;
-import org.apache.qpid.proton.amqp.messaging.TerminusExpiryPolicy;
-import org.apache.qpid.proton.amqp.transport.ReceiverSettleMode;
-import org.apache.qpid.proton.amqp.transport.SenderSettleMode;
-import org.apache.qpid.proton.engine.Receiver;
+import org.apache.qpid.protonj2.engine.Endpoint;
+import org.apache.qpid.protonj2.engine.Receiver;
+import org.apache.qpid.protonj2.types.DescribedType;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.Accepted;
+import org.apache.qpid.protonj2.types.messaging.Modified;
+import org.apache.qpid.protonj2.types.messaging.Rejected;
+import org.apache.qpid.protonj2.types.messaging.Released;
+import org.apache.qpid.protonj2.types.messaging.Source;
+import org.apache.qpid.protonj2.types.messaging.Target;
+import org.apache.qpid.protonj2.types.messaging.TerminusDurability;
+import org.apache.qpid.protonj2.types.messaging.TerminusExpiryPolicy;
+import org.apache.qpid.protonj2.types.transport.ReceiverSettleMode;
+import org.apache.qpid.protonj2.types.transport.SenderSettleMode;
 
 /**
- * Resource builder responsible for creating and opening an AmqpConsumer instance.
+ * AMQP {@link Receiver} builder that wraps the {@link Endpoint} with a new {@link AmqpConsumer}.
  */
-public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpSession, JmsConsumerInfo, Receiver> {
+public class AmqpConsumerBuilder extends AmqpEndpointBuilder<AmqpConsumer, AmqpSession, JmsConsumerInfo, Receiver> {
 
-    boolean validateSharedSubsLinkCapability;
-    boolean sharedSubsNotSupported;
+    private boolean validateSharedSubsLinkCapability;
+    private boolean sharedSubsNotSupported;
 
-    public AmqpConsumerBuilder(AmqpSession parent, JmsConsumerInfo consumerInfo) {
-        super(parent, consumerInfo);
+    public AmqpConsumerBuilder(AmqpSession session, JmsConsumerInfo resourceInfo) {
+        super(session.getProvider(), session, resourceInfo);
     }
 
     @Override
@@ -94,7 +94,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
 
             // Validate subscriber type allowed given existing active subscriber types.
             if (resourceInfo.isShared() && resourceInfo.isDurable()) {
-                if(subTracker.isActiveExclusiveDurableSub(subscriptionName)) {
+                if (subTracker.isActiveExclusiveDurableSub(subscriptionName)) {
                     // Don't allow shared sub if there is already an active exclusive durable sub
                     throw new JMSRuntimeException("A non-shared durable subscription is already active with name '" + subscriptionName + "'");
                 }
@@ -134,7 +134,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
     }
 
     @Override
-    protected void afterOpened() {
+    protected void processEndpointRemotelyOpened(Receiver receiver, JmsConsumerInfo resourceInfo) {
         if (validateSharedSubsLinkCapability) {
             Symbol[] remoteOfferedCapabilities = endpoint.getRemoteOfferedCapabilities();
 
@@ -159,17 +159,11 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
     }
 
     @Override
-    protected void afterClosed(AmqpConsumer resource, JmsConsumerInfo info) {
-        // If the resource being built is closed during the creation process
-        // then this is a failure, we need to ensure we don't track it.
-        AmqpConnection connection = getParent().getConnection();
-        AmqpSubscriptionTracker subTracker = connection.getSubTracker();
-        subTracker.consumerRemoved(info);
-    }
-
-    @Override
-    public void processRemoteDetach(AmqpProvider provider) {
-        handleClosed(provider, null);
+    protected void processEndpointRemotelyClosed(Receiver receiver, JmsConsumerInfo resourceInfo) {
+        AmqpSubscriptionTracker subTracker = getParent().getConnection().getSubTracker();
+        if (subTracker != null) {
+            subTracker.consumerRemoved(resourceInfo);
+        }
     }
 
     @Override
@@ -184,7 +178,8 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
         }
 
         // Verify the attach response contained a non-null Source
-        org.apache.qpid.proton.amqp.transport.Source source = endpoint.getRemoteSource();
+        final Source source = endpoint.getRemoteSource();
+
         if (source != null) {
             return super.getDefaultOpenAbortException();
         } else {
@@ -221,7 +216,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
         }
 
         // Capabilities
-        LinkedList<Symbol> capabilities = new LinkedList<>();
+        List<Symbol> capabilities = new ArrayList<>();
 
         Symbol typeCapability =  AmqpDestinationHelper.toTypeCapability(resourceInfo.getDestination());
         if (typeCapability != null){
@@ -231,7 +226,7 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
         if (resourceInfo.isShared()) {
             capabilities.add(AmqpSupport.SHARED);
 
-            if(!resourceInfo.isExplicitClientID()) {
+            if (!resourceInfo.isExplicitClientID()) {
                 capabilities.add(AmqpSupport.GLOBAL);
             }
         }

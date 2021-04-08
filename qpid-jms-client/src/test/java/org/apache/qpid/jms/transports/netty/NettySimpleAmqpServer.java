@@ -16,16 +16,6 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.ANONYMOUS_RELAY;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.CONNECTION_OPEN_FAILED;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.CONTAINER_ID;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DELAYED_DELIVERY;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.INVALID_FIELD;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.PLATFORM;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.PRODUCT;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SOLE_CONNECTION_CAPABILITY;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.VERSION;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -75,6 +65,17 @@ public class NettySimpleAmqpServer extends NettyServer {
     private static final Logger LOG = LoggerFactory.getLogger(NettySimpleAmqpServer.class);
 
     private static final AtomicInteger SERVER_SEQUENCE = new AtomicInteger();
+
+    public static final Symbol SOLE_CONNECTION_CAPABILITY = Symbol.valueOf("sole-connection-for-container");
+    public static final Symbol ANONYMOUS_RELAY = Symbol.valueOf("ANONYMOUS-RELAY");
+    public static final Symbol DELAYED_DELIVERY = Symbol.valueOf("DELAYED_DELIVERY");
+    public static final Symbol SHARED_SUBS = Symbol.valueOf("SHARED-SUBS");
+    public static final Symbol CONNECTION_OPEN_FAILED = Symbol.valueOf("amqp:connection-establishment-failed");
+    public static final Symbol INVALID_FIELD = Symbol.valueOf("invalid-field");
+    public static final Symbol CONTAINER_ID = Symbol.valueOf("container-id");
+    public static final Symbol PRODUCT = Symbol.valueOf("product");
+    public static final Symbol VERSION = Symbol.valueOf("version");
+    public static final Symbol PLATFORM = Symbol.valueOf("platform");
 
     private static final int CHANNEL_MAX = 32767;
     private static final int HEADER_SIZE = 8;

@@ -98,7 +98,8 @@ public abstract class AbstractFieldAndDescriptorMatcher {
             @SuppressWarnings("unchecked")
             Matcher<Object> matcher = (Matcher<Object>) entry.getValue();
             Enum<?> field = entry.getKey();
-            assertThat("Field " + field + " value should match", valueMap.get(field), matcher);
+            Object value = valueMap.get(field);
+            assertThat("Field " + field + " value should match", value, matcher);
         }
     }
 

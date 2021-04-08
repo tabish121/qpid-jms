@@ -194,7 +194,7 @@ public class JmsConnectionFactoryTest extends QpidJmsTestCase {
 
         assertFalse(deserializationPolicy.getAllowList().equals(TRUSTED_PACKAGES));
 
-        deserializationPolicy.setWhiteList(TRUSTED_PACKAGES);
+        deserializationPolicy.setAllowList(TRUSTED_PACKAGES);
 
         JmsConnection connection = (JmsConnection) factory.createConnection();
         assertNotNull(connection);

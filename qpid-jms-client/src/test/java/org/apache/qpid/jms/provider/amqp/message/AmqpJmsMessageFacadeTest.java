@@ -32,7 +32,6 @@ import static org.junit.Assert.fail;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -49,21 +48,19 @@ import org.apache.qpid.jms.JmsTopic;
 import org.apache.qpid.jms.message.facade.JmsMessageFacade;
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
 import org.apache.qpid.jms.test.testpeer.describedtypes.sections.PropertiesDescribedType;
-import org.apache.qpid.proton.Proton;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.UnsignedByte;
-import org.apache.qpid.proton.amqp.UnsignedInteger;
-import org.apache.qpid.proton.amqp.UnsignedLong;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
-import org.apache.qpid.proton.amqp.messaging.DeliveryAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Footer;
-import org.apache.qpid.proton.amqp.messaging.Header;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Properties;
 import org.apache.qpid.proton.codec.Data;
-import org.apache.qpid.proton.message.Message;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.UnsignedByte;
+import org.apache.qpid.protonj2.types.UnsignedInteger;
+import org.apache.qpid.protonj2.types.UnsignedLong;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.ApplicationProperties;
+import org.apache.qpid.protonj2.types.messaging.DeliveryAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Footer;
+import org.apache.qpid.protonj2.types.messaging.Header;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Properties;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -88,7 +85,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         AmqpJmsMessageFacade amqpMessageFacade = createNewMessageFacade();
 
         assertNotNull("Expected message to have Header section", amqpMessageFacade.getHeader());
-        assertTrue("Durable not as expected", amqpMessageFacade.getAmqpHeader().isDurable());
+        assertTrue("Durable not as expected", amqpMessageFacade.getHeader().isDurable());
     }
 
     // --- ttl field  ---
@@ -112,16 +109,16 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         AmqpJmsMessageFacade amqpMessageFacade = createNewMessageFacade();
 
         assertNotNull("Expected message to have Header section", amqpMessageFacade.getHeader());
-        assertNull("Ttl field should not be set", amqpMessageFacade.getHeader().getTtl());
+        assertFalse("Ttl field should not be set", amqpMessageFacade.getHeader().hasTimeToLive());
     }
 
     @Test
-    public void testGetTtlSynthesizedExpirationOnReceivedMessageWithTtlButNoAbsoluteExpiration() throws JMSException {
+    public void testgetTimeToLiveSynthesizedExpirationOnReceivedMessageWithTtlButNoAbsoluteExpiration() throws JMSException {
         Long ttl = 123L;
 
-        Message message = Proton.message();
+        AmqpMessage message = new AmqpMessage();
         Header header = new Header();
-        header.setTtl(UnsignedInteger.valueOf(ttl));
+        header.setTimeToLive(UnsignedInteger.valueOf(ttl).intValue());
         message.setHeader(header);
 
         long start = System.currentTimeMillis();
@@ -142,7 +139,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     }
 
     @Test
-    public void testSetGetTtlOverrideOnNewMessage() throws Exception {
+    public void testSetgetTimeToLiveOverrideOnNewMessage() throws Exception {
         long ttl = 123L;
 
         AmqpJmsMessageFacade amqpMessageFacade = createNewMessageFacade();
@@ -155,47 +152,48 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         assertTrue("Should have a ttl override", amqpMessageFacade.hasAmqpTimeToLiveOverride());
         assertEquals(ttl, amqpMessageFacade.getAmqpTimeToLiveOverride());
         // check value on underlying TTL field is NOT set
-        assertNull("TTL field on underlying message should NOT be set", amqpMessageFacade.getHeader().getTtl());
+        assertFalse("TTL field on underlying message should NOT be set", amqpMessageFacade.getHeader().hasTimeToLive());
     }
 
     @Test
     public void testOnSendClearsTtlOnMessageReceivedWithTtl() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         int origTtl = 5;
-        message.setTtl(origTtl);
+        message.timeToLive(origTtl);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
-        assertEquals("TTL has been unset already", origTtl, message.getTtl());
+        assertEquals("TTL has been unset already", origTtl, message.timeToLive());
 
         amqpMessageFacade.onSend(0);
 
         // check value on underlying TTL field is NOT set
-        assertEquals("TTL has not been cleared", 0, amqpMessageFacade.getAmqpHeader().getTimeToLive());
-        assertNull("Underlying Header should be null, no values set to non-defaults", amqpMessageFacade.getHeader());
+        assertFalse("TTL has not been cleared", amqpMessageFacade.getHeader().hasTimeToLive());
+        assertEquals("TTL has not been cleared", -1, amqpMessageFacade.getHeader().getTimeToLive());
+        assertTrue("Underlying Header should be null, no values set to non-defaults", amqpMessageFacade.getHeader().isEmpty());
     }
 
     @Test
     public void testOnSendOverridesTtlOnMessageReceivedWithTtl() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         int origTtl = 5;
         int newTtl = 10;
-        message.setTtl(origTtl);
+        message.timeToLive(origTtl);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
-        assertEquals("TTL has been unset already", origTtl, message.getTtl());
+        assertEquals("TTL has been unset already", origTtl, message.timeToLive());
 
         amqpMessageFacade.onSend(newTtl);
 
         // check value on underlying TTL field is NOT set
-        assertEquals("TTL has not been overriden", newTtl, amqpMessageFacade.getAmqpHeader().getTimeToLive());
-        assertEquals("TTL field on underlying message should be set", UnsignedInteger.valueOf(newTtl), amqpMessageFacade.getHeader().getTtl());
+        assertEquals("TTL has not been overriden", newTtl, amqpMessageFacade.getHeader().getTimeToLive());
+        assertEquals("TTL field on underlying message should be set", newTtl, amqpMessageFacade.getHeader().getTimeToLive());
     }
 
     @Test
     public void testOnSendOverridesProviderTtlWithSpecifiedOverrideTtl() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         int overrideTtl = 5;
         int producerTtl = 10;
 
@@ -205,7 +203,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         amqpMessageFacade.onSend(producerTtl);
 
         // check value on underlying TTL field is set to the override
-        assertEquals("TTL has not been overriden", overrideTtl, amqpMessageFacade.getAmqpHeader().getTimeToLive());
+        assertEquals("TTL has not been overriden", overrideTtl, amqpMessageFacade.getHeader().getTimeToLive());
     }
 
     // --- delivery count  ---
@@ -224,7 +222,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testGetDeliveryCountForReceivedMessageWithNoHeader() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         assertNull("expected no header section to exist", message.getHeader());
@@ -238,7 +236,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testGetDeliveryCountForReceivedMessageWithHeaderButNoDeliveryCount() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         Header header = new Header();
@@ -254,9 +252,9 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testGetDeliveryCountForReceivedMessageWithHeaderWithDeliveryCount() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Header header = new Header();
-        header.setDeliveryCount(new UnsignedInteger(1));
+        header.setDeliveryCount(1);
         message.setHeader(header);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -271,7 +269,8 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testSetRedeliveredAltersDeliveryCount() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
+
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         // Redelivered state inferred from delivery count
@@ -285,9 +284,9 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testSetRedeliveredWhenAlreadyRedeliveredDoesNotChangeDeliveryCount() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Header header = new Header();
-        header.setDeliveryCount(new UnsignedInteger(1));
+        header.setDeliveryCount(1);
         message.setHeader(header);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -303,9 +302,9 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testSetRedeliveredFalseClearsDeliveryCount() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Header header = new Header();
-        header.setDeliveryCount(new UnsignedInteger(1));
+        header.setDeliveryCount(1);
         message.setHeader(header);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -321,7 +320,8 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testSetRedeliveryCountToZeroWhenNoHeadersNoNPE() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
+
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
         assertNull("expected no header section to exist", message.getHeader());
         amqpMessageFacade.setRedeliveryCount(0);
@@ -341,7 +341,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
      */
     @Test
     public void testGetPriorityIs4ForReceivedMessageWithNoHeader() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         assertNull("expected no header section to exist", message.getHeader());
@@ -354,7 +354,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
      */
     @Test
     public void testGetPriorityIs4ForReceivedMessageWithHeaderButWithoutPriority() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Header header = new Header();
         message.setHeader(header);
@@ -372,10 +372,10 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         // value over 10 deliberately
         byte priority = 7;
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Header header = new Header();
         message.setHeader(header);
-        header.setPriority(UnsignedByte.valueOf(priority));
+        header.setPriority(priority);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
@@ -391,10 +391,10 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         // value just over 9 deliberately
         byte priority = 11;
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Header header = new Header();
         message.setHeader(header);
-        header.setPriority(UnsignedByte.valueOf(priority));
+        header.setPriority(priority);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
@@ -410,10 +410,10 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testGetPriorityForReceivedMessageWithPriorityAboveSignedByteRange() {
         String priorityString = String.valueOf(255);
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Header header = new Header();
         message.setHeader(header);
-        header.setPriority(UnsignedByte.valueOf(priorityString));
+        header.setPriority(UnsignedByte.valueOf(priorityString).byteValue());
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
@@ -432,7 +432,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         amqpMessageFacade.setPriority(priority);
 
         assertEquals("expected priority value not found", priority, amqpMessageFacade.getPriority());
-        assertEquals("expected priority value not found", UnsignedByte.valueOf(priority), amqpMessageFacade.getHeader().getPriority());
+        assertEquals("expected priority value not found", priority, amqpMessageFacade.getHeader().getPriority());
     }
 
     /**
@@ -445,7 +445,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         amqpMessageFacade.setPriority(-1);
 
         assertEquals("expected priority value not found", 0, amqpMessageFacade.getPriority());
-        assertEquals("expected priority value not found", UnsignedByte.valueOf((byte) 0), amqpMessageFacade.getHeader().getPriority());
+        assertEquals("expected priority value not found", 0, amqpMessageFacade.getHeader().getPriority());
     }
 
     /**
@@ -458,7 +458,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         amqpMessageFacade.setPriority(11);
 
         assertEquals("expected priority value not found", 9, amqpMessageFacade.getPriority());
-        assertEquals("expected priority value not found", UnsignedByte.valueOf((byte) 9), amqpMessageFacade.getHeader().getPriority());
+        assertEquals("expected priority value not found", 9, amqpMessageFacade.getHeader().getPriority());
     }
 
     /**
@@ -468,15 +468,15 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     @Test
     public void testSetDefaultPriorityForMessageWithoutHeaderSection() {
         // Using a received message as new messages to send are set durable by default, which creates the header
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         assertNull("expected no header section to exist", message.getHeader());
 
-        amqpMessageFacade.setPriority(Message.DEFAULT_PRIORITY);
+        amqpMessageFacade.setPriority(AmqpMessage.DEFAULT_PRIORITY);
 
         assertNull("expected no header section to exist", message.getHeader());
-        assertEquals("expected priority to be default", Message.DEFAULT_PRIORITY, amqpMessageFacade.getPriority());
+        assertEquals("expected priority to be default", AmqpMessage.DEFAULT_PRIORITY, amqpMessageFacade.getPriority());
     }
 
     /**
@@ -487,19 +487,19 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testSetPriorityToDefaultOnReceivedMessageWithPriorityClearsPriorityField() {
         byte priority = 11;
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         Header header = new Header();
         message.setHeader(header);
-        header.setPriority(UnsignedByte.valueOf(priority));
+        header.setPriority(priority);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
-        amqpMessageFacade.setPriority(Message.DEFAULT_PRIORITY);
+        amqpMessageFacade.setPriority(AmqpMessage.DEFAULT_PRIORITY);
 
         //check the expected value is still returned
-        assertEquals("expected priority value not returned", Message.DEFAULT_PRIORITY, amqpMessageFacade.getPriority());
+        assertEquals("expected priority value not returned", AmqpMessage.DEFAULT_PRIORITY, amqpMessageFacade.getPriority());
 
         //check the underlying header field was actually cleared rather than set to Message.DEFAULT_PRIORITY
-        assertNull("underlying header priority field was not cleared", amqpMessageFacade.getHeader());
+        assertTrue("underlying header priority field was not cleared", amqpMessageFacade.getHeader().isEmpty());
     }
 
     // ====== AMQP Properties Section =======
@@ -592,7 +592,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
      */
     @Test
     public void testGetReplyToGroupIdWithReceivedMessageWithNoProperties() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         String replyToGroupId = amqpMessageFacade.getReplyToGroupId();
@@ -621,10 +621,10 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
      */
     @Test
     public void testGetReplyToGroupIdWithReceivedMessageWithPropertiesButNoReplyToGroupId() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
-        props.setContentType(Symbol.valueOf("content-type"));
+        props.setContentType("content-type");
         message.setProperties(props);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -641,7 +641,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testGetReplyToGroupIdWithReceivedMessage() {
         String replyToGroupId = "myReplyGroup";
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
         props.setReplyToGroupId(replyToGroupId);
@@ -711,7 +711,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         int groupSequence = 5;
         amqpMessageFacade.setGroupSequence(groupSequence);
 
-        assertEquals("underlying message should have groupSequence field value", groupSequence, amqpMessageFacade.getProperties().getGroupSequence().longValue());
+        assertEquals("underlying message should have groupSequence field value", groupSequence, amqpMessageFacade.getProperties().getGroupSequence());
         assertEquals("GroupSequence not as expected", groupSequence, amqpMessageFacade.getGroupSequence());
     }
 
@@ -729,16 +729,16 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         UnsignedInteger mapped = UnsignedInteger.valueOf(MAX_UINT - delta);
         amqpMessageFacade.setGroupSequence(-1 - delta);
 
-        assertEquals("underlying message should have no groupSequence field value",mapped, amqpMessageFacade.getProperties().getGroupSequence());
+        assertEquals("underlying message should have no groupSequence field value", mapped.longValue(), amqpMessageFacade.getProperties().getGroupSequence());
         assertEquals("GroupSequence not as expected", -1 - delta, amqpMessageFacade.getGroupSequence());
     }
 
     @Test
     public void testGetGroupSequenceOnReceivedMessageWithGroupSequenceJustAboveSignedIntRange() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
-        props.setGroupSequence(UnsignedInteger.valueOf(1L + Integer.MAX_VALUE));
+        props.setGroupSequence(1L + Integer.MAX_VALUE);
         message.setProperties(props);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -749,10 +749,10 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testGetGroupSequenceOnReceivedMessageWithGroupSequenceMaxUnsignedIntValue() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
-        props.setGroupSequence(UnsignedInteger.valueOf(MAX_UINT));
+        props.setGroupSequence(MAX_UINT);
         message.setProperties(props);
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -823,7 +823,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testGetDestinationWithReceivedMessage() throws JMSException {
         String testToAddress = "myTestAddress";
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
         props.setTo(testToAddress);
@@ -840,7 +840,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     @Test
     public void testGetDestinationWithReceivedMessageWithoutPropertiesUsesConsumerDestination() throws JMSException {
         AmqpConsumer consumer = createMockAmqpConsumer();
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(consumer, message);
         assertNotNull(amqpMessageFacade.getDestination());
         assertEquals(consumer.getDestination(), amqpMessageFacade.getDestination());
@@ -886,7 +886,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testGetReplyToWithReceivedMessage() throws JMSException {
         String testReplyToAddress = "myTestReplyTo";
 
-        Message message = Proton.message();
+        AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
         props.setReplyTo(testReplyToAddress);
@@ -902,7 +902,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testGetReplyToWithReceivedMessageWithoutProperties() throws JMSException {
-        Message message = Proton.message();
+        AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
         assertNull(amqpMessageFacade.getReplyTo());
     }
@@ -1133,16 +1133,13 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
         Data payloadData = Data.Factory.create();
         PropertiesDescribedType props = new PropertiesDescribedType();
-        props.setCorrelationId(new Binary(bytes));
+        props.setCorrelationId(new org.apache.qpid.proton.amqp.Binary(bytes));
         payloadData.putDescribedType(props);
-        Binary b = payloadData.encode();
+        org.apache.qpid.proton.amqp.Binary b = payloadData.encode();
 
         System.out.println("Using encoded AMQP message payload: " + b);
 
-        Message message = Proton.message();
-        int decoded = message.decode(b.getArray(), b.getArrayOffset(), b.getLength());
-        assertEquals(decoded, b.getLength());
-
+        AmqpMessage message = AmqpMessage.decode(b.getArray(), b.getArrayOffset(), b.getLength());
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         assertEquals("Unexpected correlationId value on underlying AMQP message", testCorrelationId, amqpMessageFacade.getProperties().getCorrelationId());
@@ -1162,7 +1159,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     }
 
     private void correlationIdOnReceivedMessageTestImpl(final Object testCorrelationId, final String expected, boolean appSpecificCorrelationId) {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
         props.setCorrelationId(testCorrelationId);
@@ -1298,7 +1295,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
             throw new IllegalArgumentException("invalid id type");
         }
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
         props.setMessageId(underlyingMessageId);
@@ -1383,7 +1380,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         amqpMessageFacade.setTimestamp(expected);
 
         assertEquals("Unexpected timestamp value", expected, amqpMessageFacade.getTimestamp());
-        assertEquals("Expected creation-time field to be set on new Properties section", new Date(expected), amqpMessageFacade.getProperties().getCreationTime());
+        assertEquals("Expected creation-time field to be set on new Properties section", expected, amqpMessageFacade.getProperties().getCreationTime());
     }
 
     @Test
@@ -1401,7 +1398,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
         amqpMessageFacade.setTimestamp(timestamp);
 
-        assertEquals("Expected creation-time field to be set", timestamp.longValue(), amqpMessageFacade.getProperties().getCreationTime().getTime());
+        assertEquals("Expected creation-time field to be set", timestamp.longValue(), amqpMessageFacade.getProperties().getCreationTime());
         assertEquals("Expected timestamp", timestamp.longValue(), amqpMessageFacade.getTimestamp());
     }
 
@@ -1424,7 +1421,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
         amqpMessageFacade.setTimestamp(0);
 
-        assertNull("Expected creation-time to be null", amqpMessageFacade.getProperties().getCreationTime());
+        assertFalse("Expected creation-time to be null", amqpMessageFacade.getProperties().hasCreationTime());
         assertEquals("Expected no timestamp", 0, amqpMessageFacade.getTimestamp());
     }
 
@@ -1445,7 +1442,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
         amqpMessageFacade.setExpiration(timestamp);
 
-        assertEquals("Expected absolute-expiry-time to be set", timestamp.longValue(), amqpMessageFacade.getProperties().getAbsoluteExpiryTime().getTime());
+        assertEquals("Expected absolute-expiry-time to be set", timestamp.longValue(), amqpMessageFacade.getProperties().getAbsoluteExpiryTime());
         assertEquals("Expected expiration to be set", timestamp.longValue(), amqpMessageFacade.getExpiration());
     }
 
@@ -1469,7 +1466,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
         amqpMessageFacade.setExpiration(0);
 
-        assertNull("Expected absolute-expiry-time to be null", amqpMessageFacade.getProperties().getAbsoluteExpiryTime());
+        assertFalse("Expected absolute-expiry-time to be null", amqpMessageFacade.getProperties().hasAbsoluteExpiryTime());
         assertEquals("Expected no expiration", 0, amqpMessageFacade.getExpiration());
     }
 
@@ -1487,7 +1484,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         String userIdString = "testValue";
         byte[] bytes = userIdString.getBytes("UTF-8");
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
         props.setUserId(new Binary(bytes));
@@ -1503,7 +1500,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testGetUserIdOnReceievedMessageWithEmptyBinaryValue() throws Exception {
         byte[] bytes = new byte[0];
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Properties props = new Properties();
         props.setUserId(new Binary(bytes));
@@ -1576,9 +1573,9 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         String userIdString = "testValue";
         byte[] bytes = userIdString.getBytes("UTF-8");
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
-        message.setUserId(bytes);
+        message.userId(bytes);
 
         Properties props = new Properties();
         props.setUserId(new Binary(bytes));
@@ -1677,7 +1674,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testMessageAnnotationExistsUsingReceivedMessageWithoutMessageAnnotationsSection() {
         Symbol symbolKeyName = Symbol.valueOf("myTestSymbolName");
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
@@ -1689,7 +1686,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         Symbol symbolKeyName = Symbol.valueOf("myTestSymbolName");
         String value = "myTestValue";
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> annotationsMap = new HashMap<Symbol, Object>();
         annotationsMap.put(symbolKeyName, value);
@@ -1705,7 +1702,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testGetMessageAnnotationUsingReceivedMessageWithoutMessageAnnotationsSection() {
         Symbol symbolKeyName = Symbol.valueOf("myTestSymbolName");
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
@@ -1717,7 +1714,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         Symbol symbolKeyName = Symbol.valueOf("myTestSymbolName");
         String value = "myTestValue";
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> annotationsMap = new HashMap<Symbol, Object>();
         annotationsMap.put(symbolKeyName, value);
@@ -1768,7 +1765,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         Symbol symbolKeyName = Symbol.valueOf("myTestSymbolName");
         String value = "myTestValue";
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> annotationsMap = new HashMap<Symbol, Object>();
         annotationsMap.put(symbolKeyName, value);
@@ -1785,7 +1782,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testRemoveMessageAnnotationOnMessageWithNoMessageAnnotationSectionDoesntFail() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
@@ -1794,7 +1791,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testClearAllMessageAnnotationsUsingNewMessage() {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         amqpMessageFacade.clearMessageAnnotations();
@@ -1807,7 +1804,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         String symbolKeyName = "myTestSymbolName";
         String value = "myTestValue";
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         Map<Symbol, Object> annotationsMap = new HashMap<Symbol, Object>();
         annotationsMap.put(Symbol.valueOf(symbolKeyName), value);
@@ -1870,8 +1867,8 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testGetJMSTypeWithReceivedMessage() throws Exception {
         String myJMSType = "myJMSType";
 
-        Message message = Proton.message();
-        message.setSubject(myJMSType);
+        final AmqpMessage message = new AmqpMessage();
+        message.subject(myJMSType);
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         assertEquals("JMSType value was not as expected", myJMSType, amqpMessageFacade.getType());
@@ -1901,10 +1898,10 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         applicationPropertiesMap.put(TEST_PROP_A, TEST_VALUE_STRING_A);
         applicationPropertiesMap.put(TEST_PROP_B, TEST_VALUE_STRING_B);
 
-        Message message2 = Proton.message();
-        message2.setApplicationProperties(new ApplicationProperties(applicationPropertiesMap));
+        final AmqpMessage message = new AmqpMessage();
+        message.setApplicationProperties(new ApplicationProperties(applicationPropertiesMap));
 
-        JmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message2);
+        JmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         Set<String> props = amqpMessageFacade.getPropertyNames();
         assertEquals(2, props.size());
@@ -1916,7 +1913,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testGetPropertiesWithoutAnyApplicationPropertiesSection() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         JmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         Set<String> applicationProperties = amqpMessageFacade.getPropertyNames();
@@ -1930,10 +1927,10 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         applicationPropertiesMap.put(TEST_PROP_A, TEST_VALUE_STRING_A);
         applicationPropertiesMap.put(TEST_PROP_B, TEST_VALUE_STRING_B);
 
-        Message message2 = Proton.message();
-        message2.setApplicationProperties(new ApplicationProperties(applicationPropertiesMap));
+        final AmqpMessage message = new AmqpMessage();
+        message.setApplicationProperties(new ApplicationProperties(applicationPropertiesMap));
 
-        AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message2);
+        AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         Set<String> applicationPropertyNames = amqpMessageFacade.getPropertyNames();
         assertEquals(2, applicationPropertyNames.size());
@@ -1943,7 +1940,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testGetPropertyNamesWithoutAnyApplicationPropertiesSection() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         Set<String> applicationPropertyNames = amqpMessageFacade.getPropertyNames();
@@ -1956,7 +1953,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         Map<String, Object> applicationPropertiesMap = new HashMap<>();
         applicationPropertiesMap.put(TEST_PROP_A, TEST_VALUE_STRING_A);
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         message.setApplicationProperties(new ApplicationProperties(applicationPropertiesMap));
 
         JmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -1975,7 +1972,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         Map<String, Object> applicationPropertiesMap = new HashMap<>();
         applicationPropertiesMap.put(TEST_PROP_A, TEST_VALUE_STRING_A);
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         message.setApplicationProperties(new ApplicationProperties(applicationPropertiesMap));
 
         JmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -1986,7 +1983,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testPropertyExistsWithNoApplicationPropertiesSection() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
 
         JmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
@@ -1998,7 +1995,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         Map<String, Object> applicationPropertiesMap = new HashMap<>();
         applicationPropertiesMap.put(TEST_PROP_A, TEST_VALUE_STRING_A);
 
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         message.setApplicationProperties(new ApplicationProperties(applicationPropertiesMap));
 
         JmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
@@ -2009,7 +2006,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
 
     @Test
     public void testSetProperty() throws Exception {
-        Message message = Proton.message();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
 
         assertNull(amqpMessageFacade.getProperty(TEST_PROP_A));
@@ -2129,12 +2126,12 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         AmqpJmsMessageFacade amqpMessageFacade = createNewMessageFacade();
 
         amqpMessageFacade.setPersistent(false);
-        amqpMessageFacade.setPriority(Message.DEFAULT_PRIORITY);
+        amqpMessageFacade.setPriority(AmqpMessage.DEFAULT_PRIORITY);
         amqpMessageFacade.setRedelivered(false);
 
         amqpMessageFacade.onSend(0);
 
-        assertNull(amqpMessageFacade.getHeader());
+        assertTrue(amqpMessageFacade.getHeader().isEmpty());
     }
 
     @Test
@@ -2142,7 +2139,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         AmqpJmsMessageFacade amqpMessageFacade = createNewMessageFacade();
 
         amqpMessageFacade.setPersistent(true);
-        amqpMessageFacade.setPriority(Message.DEFAULT_PRIORITY + 1);
+        amqpMessageFacade.setPriority(AmqpMessage.DEFAULT_PRIORITY + 1);
         amqpMessageFacade.setRedelivered(true);
 
         amqpMessageFacade.onSend(100);
@@ -2178,7 +2175,7 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
         source.setDestination(aQueue);
         source.setReplyTo(tempQueue);
 
-        source.setContentType(Symbol.valueOf("Test-ContentType"));
+        source.setContentType("Test-ContentType");
         source.setCorrelationId("MY-APP-ID");
         source.setExpiration(42L);
         source.setGroupId("TEST-GROUP");
@@ -2267,13 +2264,13 @@ public class AmqpJmsMessageFacadeTest extends AmqpJmsMessageTypesTestCase  {
     public void testMessageHasBodyDetectsPayload() throws Exception {
         AmqpJmsMessageFacade amqpMessageFacade = createNewMessageFacade();
         assertFalse(amqpMessageFacade.hasBody());
-        amqpMessageFacade.setBody(new AmqpValue("test"));
+        amqpMessageFacade.setBody(new AmqpValue<String>("test"));
         assertTrue(amqpMessageFacade.hasBody());
     }
 
     @Test
     public void testClearBodyRemoveMessageBody() {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsMessageFacade amqpMessageFacade = createReceivedMessageFacade(createMockAmqpConsumer(), message);
         amqpMessageFacade = Mockito.spy(amqpMessageFacade);
         amqpMessageFacade.clearBody();

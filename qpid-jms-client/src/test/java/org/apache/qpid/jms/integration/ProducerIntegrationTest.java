@@ -18,8 +18,6 @@
  */
 package org.apache.qpid.jms.integration;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.ANONYMOUS_RELAY;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DELAYED_DELIVERY;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.arrayContaining;
 import static org.hamcrest.Matchers.both;
@@ -349,7 +347,7 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
 
             String queueName = "myQueue";
             TargetMatcher targetMatcher = new TargetMatcher();
-            if(anonymousProducer) {
+            if (anonymousProducer) {
                 targetMatcher.withAddress(nullValue());
             } else {
                 targetMatcher.withAddress(equalTo(queueName));
@@ -360,7 +358,7 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             Queue queue = session.createQueue(queueName);
             MessageProducer producer;
-            if(anonymousProducer) {
+            if (anonymousProducer) {
                 producer = session.createProducer(null);
             } else {
                 producer = session.createProducer(queue);
@@ -372,9 +370,9 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
             MessagePropertiesSectionMatcher propsMatcher = new MessagePropertiesSectionMatcher(true);
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
             messageMatcher.setMessageAnnotationsMatcher(msgAnnotationsMatcher);
-            if(setPriority) {
+            if (setPriority) {
                 MessageHeaderSectionMatcher headerMatcher = new MessageHeaderSectionMatcher(true);
-                headerMatcher.withDurable(equalTo(false));
+                headerMatcher.withDurable(Matchers.anyOf(equalTo(false), nullValue()));
                 headerMatcher.withPriority(equalTo(UnsignedByte.valueOf(priority)));
 
                 messageMatcher.setHeadersMatcher(headerMatcher);
@@ -388,19 +386,19 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
 
             assertNull("Should not yet have a JMSDestination", message.getJMSDestination());
 
-            if(setOnProducer) {
+            if (setOnProducer) {
                 producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
-                if(setPriority) {
+                if (setPriority) {
                     producer.setPriority(priority);
                 }
 
-                if(anonymousProducer) {
+                if (anonymousProducer) {
                     producer.send(queue, message);
                 } else {
                     producer.send(message);
                 }
             } else {
-                if(anonymousProducer) {
+                if (anonymousProducer) {
                     producer.send(queue, message, DeliveryMode.NON_PERSISTENT, setPriority ? priority : Message.DEFAULT_PRIORITY, Message.DEFAULT_TIME_TO_LIVE);
                 } else {
                     producer.send(message, DeliveryMode.NON_PERSISTENT, setPriority ? priority : Message.DEFAULT_PRIORITY, Message.DEFAULT_TIME_TO_LIVE);
@@ -1336,7 +1334,7 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
     @Test(timeout = 20000)
     public void testSendWhenLinkCreditIsDelayed() throws Exception {
         try(TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            Connection connection = testFixture.establishConnecton(testPeer, "?amqp.traceFrames=true&amqp.traceBytes=true");
+            Connection connection = testFixture.establishConnecton(testPeer);
             testPeer.expectBegin();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -2114,7 +2112,7 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
 
             MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true).withDurable(equalTo(true));
             MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_DELIVERY_TIME, inRange);
+            msgAnnotationsMatcher.withEntry(JMS_DELIVERY_TIME, inRange);
 
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
             messageMatcher.setHeadersMatcher(headersMatcher);
@@ -2169,7 +2167,7 @@ public class ProducerIntegrationTest extends QpidJmsTestCase {
 
             MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true).withDurable(equalTo(true));
             MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_DELIVERY_TIME, notNullValue());
+            msgAnnotationsMatcher.withEntry(JMS_DELIVERY_TIME, notNullValue());
 
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
             messageMatcher.setHeadersMatcher(headersMatcher);

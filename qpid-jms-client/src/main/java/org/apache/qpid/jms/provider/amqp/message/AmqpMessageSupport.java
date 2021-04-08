@@ -16,15 +16,10 @@
  */
 package org.apache.qpid.jms.provider.amqp.message;
 
-import java.nio.ByteBuffer;
 import java.util.Map;
 
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.codec.ReadableBuffer;
-import org.apache.qpid.proton.message.Message;
-
-import io.netty.buffer.ByteBuf;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
 
 /**
  * Support class containing constant values and static methods that are
@@ -86,12 +81,12 @@ public final class AmqpMessageSupport {
     /**
      * Content type used to mark Data sections as containing a serialized java object.
      */
-    public static final Symbol SERIALIZED_JAVA_OBJECT_CONTENT_TYPE = Symbol.valueOf("application/x-java-serialized-object");
+    public static final String SERIALIZED_JAVA_OBJECT_CONTENT_TYPE = "application/x-java-serialized-object";
 
     /**
      * Content type used to mark Data sections as containing arbitrary bytes.
      */
-    public static final Symbol OCTET_STREAM_CONTENT_TYPE = Symbol.valueOf("application/octet-stream");
+    public static final String OCTET_STREAM_CONTENT_TYPE = "application/octet-stream";
 
     // For support of old string destination type annotations
     public static final Symbol LEGACY_TO_TYPE_MSG_ANNOTATION_SYMBOL = Symbol.valueOf("x-opt-to-type");
@@ -133,7 +128,7 @@ public final class AmqpMessageSupport {
      *
      * @return true if content type matches
      */
-    public static boolean isContentType(Symbol contentType, Symbol messageContentType) {
+    public static boolean isContentType(String contentType, String messageContentType) {
         if (contentType == null) {
             return messageContentType == null;
         } else if (messageContentType == null) {
@@ -141,46 +136,5 @@ public final class AmqpMessageSupport {
         } else {
             return contentType.equals(messageContentType);
         }
-    }
-
-    /**
-     * Given a byte buffer that represents an encoded AMQP Message instance,
-     * decode and return the Message.
-     *
-     * @param encodedBytes
-     *      the bytes that represent an encoded AMQP Message.
-     *
-     * @return a new Message instance with the decoded data.
-     */
-    public static Message decodeMessage(ByteBuf encodedBytes) {
-        // For now we must fully decode the message to get at the annotations.
-        Message protonMessage = Message.Factory.create();
-        protonMessage.decode(encodedBytes.array(), 0, encodedBytes.readableBytes());
-        return protonMessage;
-    }
-
-    /**
-     * Given a Message instance, encode the Message to the wire level representation
-     * of that Message.
-     *
-     * @param message
-     *      the Message that is to be encoded into the wire level representation.
-     *
-     * @return a buffer containing the wire level representation of the input Message.
-     */
-    public static ReadableBuffer encodeMessage(Message message) {
-        final int BUFFER_SIZE = 4096;
-        byte[] encodedMessage = new byte[BUFFER_SIZE];
-        int encodedSize = 0;
-        while (true) {
-            try {
-                encodedSize = message.encode(encodedMessage, 0, encodedMessage.length);
-                break;
-            } catch (java.nio.BufferOverflowException e) {
-                encodedMessage = new byte[encodedMessage.length * 2];
-            }
-        }
-
-        return ReadableBuffer.ByteBufferReader.wrap(ByteBuffer.wrap(encodedMessage, 0, encodedSize));
     }
 }

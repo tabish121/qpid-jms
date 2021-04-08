@@ -29,11 +29,10 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.message.Message;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
 import org.junit.Test;
 
 /**
@@ -130,8 +129,8 @@ public class AmqpJmsMapMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testCreateWithEmptyMap() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(new HashMap<String, Object>()));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<>(new HashMap<String, Object>()));
 
         AmqpJmsMapMessageFacade amqpMapMessageFacade = createReceivedMapMessageFacade(createMockAmqpConsumer(), message);
 
@@ -142,12 +141,12 @@ public class AmqpJmsMapMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testCreateWithPopulatedMap() throws Exception {
-        Message message = Message.Factory.create();
+        AmqpMessage message = new AmqpMessage();
         Map<String, Object> bodyMap = new HashMap<String, Object>();
         bodyMap.put("entry1", Boolean.TRUE);
         bodyMap.put("entry2", Boolean.FALSE);
 
-        message.setBody(new AmqpValue(bodyMap));
+        message.body(new AmqpValue<>(bodyMap));
 
         AmqpJmsMapMessageFacade amqpMapMessageFacade = createReceivedMapMessageFacade(createMockAmqpConsumer(), message);
 
@@ -166,8 +165,8 @@ public class AmqpJmsMapMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testCreateWithAmqpSequenceBodySectionThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpSequence(null)   );
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpSequence<>(null)   );
 
         try {
             createReceivedMapMessageFacade(createMockAmqpConsumer(), message);
@@ -179,8 +178,8 @@ public class AmqpJmsMapMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testCreateWithAmqpValueBodySectionContainingUnexpectedValueThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue("not-a-map"));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<String>("not-a-map"));
 
         try {
             createReceivedMapMessageFacade(createMockAmqpConsumer(), message);
@@ -192,8 +191,8 @@ public class AmqpJmsMapMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testCreateWithNullBodySection() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(null);
+        AmqpMessage message = new AmqpMessage();
+        message.body(null);
 
         AmqpJmsMapMessageFacade amqpMapMessageFacade = createReceivedMapMessageFacade(createMockAmqpConsumer(), message);
 
@@ -205,8 +204,8 @@ public class AmqpJmsMapMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testCreateWithEmptyAmqpValueBodySection() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(null));
+        AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<>(null));
 
         AmqpJmsMapMessageFacade amqpMapMessageFacade = createReceivedMapMessageFacade(createMockAmqpConsumer(), message);
 
@@ -233,8 +232,8 @@ public class AmqpJmsMapMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
         byte[] bytes = bytesSource.getBytes();
         origMap.put(myKey1, new Binary(bytes));
 
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(origMap));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<>(origMap));
 
         AmqpJmsMapMessageFacade amqpMapMessageFacade = createReceivedMapMessageFacade(createMockAmqpConsumer(), message);
 

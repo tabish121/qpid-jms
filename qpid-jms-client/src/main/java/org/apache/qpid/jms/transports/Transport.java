@@ -24,6 +24,9 @@ import java.util.concurrent.ThreadFactory;
 
 import javax.net.ssl.SSLContext;
 
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
+
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -80,6 +83,14 @@ public interface Transport {
     ByteBuf allocateSendBuffer(int size) throws IOException;
 
     /**
+     * Gets a buffer allocator that can produce {@link ProtonBuffer} instance that may be
+     * optimized for use with the underlying transport implementation.
+     *
+     * @return a {@link ProtonBufferAllocator} that creates transport friendly buffers.
+     */
+    ProtonBufferAllocator getBufferAllocator();
+
+    /**
      * Writes a chunk of data over the Transport connection without performing an
      * explicit flush on the transport.
      *
@@ -88,7 +99,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs during the write operation.
      */
-    void write(ByteBuf output) throws IOException;
+    void write(ProtonBuffer output) throws IOException;
 
     /**
      * Writes a chunk of data over the Transport connection and requests a flush of
@@ -99,7 +110,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs during the write operation.
      */
-    void writeAndFlush(ByteBuf output) throws IOException;
+    void writeAndFlush(ProtonBuffer output) throws IOException;
 
     /**
      * Request a flush of all pending writes to the underlying connection.

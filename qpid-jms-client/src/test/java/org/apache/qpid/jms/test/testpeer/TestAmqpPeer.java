@@ -18,13 +18,6 @@
  */
 package org.apache.qpid.jms.test.testpeer;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.ANONYMOUS_RELAY;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DELAYED_DELIVERY;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DYNAMIC_NODE_LIFETIME_POLICY;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.GLOBAL;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SHARED;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SHARED_SUBS;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SOLE_CONNECTION_CAPABILITY;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.arrayContaining;
 import static org.hamcrest.Matchers.equalTo;
@@ -62,7 +55,6 @@ import javax.security.sasl.Sasl;
 import javax.security.sasl.SaslServer;
 
 import org.apache.qpid.jms.provider.amqp.AmqpSupport;
-import org.apache.qpid.jms.provider.amqp.message.AmqpDestinationHelper;
 import org.apache.qpid.jms.test.testpeer.basictypes.AmqpError;
 import org.apache.qpid.jms.test.testpeer.basictypes.ReceiverSettleMode;
 import org.apache.qpid.jms.test.testpeer.basictypes.Role;
@@ -136,6 +128,36 @@ public class TestAmqpPeer implements AutoCloseable
 
     public static final String MESSAGE_NUMBER = "MessageNumber";
 
+    public static final Symbol SOLE_CONNECTION_CAPABILITY = Symbol.valueOf("sole-connection-for-container");
+    public static final Symbol ANONYMOUS_RELAY = Symbol.valueOf("ANONYMOUS-RELAY");
+    public static final Symbol DELAYED_DELIVERY = Symbol.valueOf("DELAYED_DELIVERY");
+    public static final Symbol SHARED_SUBS = Symbol.valueOf("SHARED-SUBS");
+
+    public static final Symbol CONNECTION_OPEN_FAILED = Symbol.valueOf("amqp:connection-establishment-failed");
+    public static final Symbol INVALID_FIELD = Symbol.valueOf("invalid-field");
+    public static final Symbol CONTAINER_ID = Symbol.valueOf("container-id");
+
+    public static final Symbol QUEUE_CAPABILITY = Symbol.valueOf("queue");
+    public static final Symbol TOPIC_CAPABILITY = Symbol.valueOf("topic");
+    public static final Symbol TEMP_QUEUE_CAPABILITY = Symbol.valueOf("temporary-queue");
+    public static final Symbol TEMP_TOPIC_CAPABILITY = Symbol.valueOf("temporary-topic");
+
+    public static final Symbol PATH = Symbol.valueOf("path");
+    public static final Symbol SCHEME = Symbol.valueOf("scheme");
+    public static final Symbol PORT = Symbol.valueOf("port");
+    public static final Symbol NETWORK_HOST = Symbol.valueOf("network-host");
+    public static final Symbol OPEN_HOSTNAME = Symbol.valueOf("hostname");
+
+    public static final Symbol COPY = Symbol.getSymbol("copy");
+    public static final Symbol JMS_NO_LOCAL_SYMBOL = Symbol.valueOf("no-local");
+    public static final Symbol JMS_SELECTOR_SYMBOL = Symbol.valueOf("jms-selector");
+    public static final Symbol SHARED = Symbol.valueOf("shared");
+    public static final Symbol GLOBAL = Symbol.valueOf("global");
+
+    public static final Symbol PRODUCT = Symbol.valueOf("product");
+    public static final Symbol VERSION = Symbol.valueOf("version");
+    public static final Symbol PLATFORM = Symbol.valueOf("platform");
+
     private static final Symbol ANONYMOUS = Symbol.valueOf("ANONYMOUS");
     private static final Symbol EXTERNAL = Symbol.valueOf("EXTERNAL");
     private static final Symbol PLAIN = Symbol.valueOf("PLAIN");
@@ -147,6 +169,7 @@ public class TestAmqpPeer implements AutoCloseable
     private static final int CONNECTION_CHANNEL = 0;
     private static final int DEFAULT_PRODUCER_CREDIT = 100;
     private static final Symbol[] DEFAULT_DESIRED_CAPABILITIES = new Symbol[] { SOLE_CONNECTION_CAPABILITY, DELAYED_DELIVERY, ANONYMOUS_RELAY, SHARED_SUBS};
+    public static final Symbol DYNAMIC_NODE_LIFETIME_POLICY = Symbol.valueOf("lifetime-policy");
 
     private volatile AssertionError _firstAssertionError = null;
     private final TestAmqpPeerRunner _driverRunnable;
@@ -912,7 +935,7 @@ public class TestAmqpPeer implements AutoCloseable
     }
 
     public void expectOpen(Map<Symbol, Object> serverProperties) {
-        expectOpen(DEFAULT_DESIRED_CAPABILITIES, new Symbol[] { AmqpSupport.SOLE_CONNECTION_CAPABILITY }, null, serverProperties, null, null, false);
+        expectOpen(DEFAULT_DESIRED_CAPABILITIES, new Symbol[] { SOLE_CONNECTION_CAPABILITY }, null, serverProperties, null, null, false);
     }
 
     public void expectOpen(Map<Symbol, Object> serverProperties, Symbol[] serverCapabilities) {
@@ -924,7 +947,7 @@ public class TestAmqpPeer implements AutoCloseable
     }
 
     public void expectOpen(Matcher<?> clientPropertiesMatcher, Matcher<?> idleTimeoutMatcher, Matcher<?> hostnameMatcher, boolean deferOpened) {
-        expectOpen(DEFAULT_DESIRED_CAPABILITIES, new Symbol[] { AmqpSupport.SOLE_CONNECTION_CAPABILITY }, clientPropertiesMatcher, null, null, hostnameMatcher, deferOpened);
+        expectOpen(DEFAULT_DESIRED_CAPABILITIES, new Symbol[] { SOLE_CONNECTION_CAPABILITY }, clientPropertiesMatcher, null, null, hostnameMatcher, deferOpened);
     }
 
     public void sendPreemptiveServerOpenFrame() {
@@ -977,7 +1000,7 @@ public class TestAmqpPeer implements AutoCloseable
     public void rejectConnect(Symbol errorType, String errorMessage, Map<Symbol, Object> errorInfo) {
         // Expect a connection, establish through the SASL negotiation and sending of the Open frame
         Map<Symbol, Object> serverProperties = new HashMap<Symbol, Object>();
-        serverProperties.put(AmqpSupport.CONNECTION_OPEN_FAILED, true);
+        serverProperties.put(CONNECTION_OPEN_FAILED, true);
 
         expectSaslAnonymous();
         expectOpen(serverProperties);
@@ -1023,7 +1046,7 @@ public class TestAmqpPeer implements AutoCloseable
     {
         final BeginMatcher beginMatcher = new BeginMatcher()
                 .withRemoteChannel(nullValue())
-                .withNextOutgoingId(equalTo(UnsignedInteger.ONE))
+                .withNextOutgoingId(equalTo(UnsignedInteger.ZERO))
                 .withIncomingWindow(notNullValue());
         if(outgoingWindowMatcher != null)
         {
@@ -1093,32 +1116,32 @@ public class TestAmqpPeer implements AutoCloseable
 
     public void expectTempQueueCreationAttach(final String dynamicAddress)
     {
-        expectTempNodeCreationAttach(dynamicAddress, AmqpDestinationHelper.TEMP_QUEUE_CAPABILITY, false, false, null, null);
+        expectTempNodeCreationAttach(dynamicAddress, TEMP_QUEUE_CAPABILITY, false, false, null, null);
     }
 
     public void expectTempQueueCreationAttach(final String dynamicAddress, boolean sendReponse)
     {
-        expectTempNodeCreationAttach(dynamicAddress, AmqpDestinationHelper.TEMP_QUEUE_CAPABILITY, sendReponse, false, false, null, null);
+        expectTempNodeCreationAttach(dynamicAddress, TEMP_QUEUE_CAPABILITY, sendReponse, false, false, null, null);
     }
 
     public void expectTempTopicCreationAttach(final String dynamicAddress)
     {
-        expectTempNodeCreationAttach(dynamicAddress, AmqpDestinationHelper.TEMP_TOPIC_CAPABILITY, false, false, null, null);
+        expectTempNodeCreationAttach(dynamicAddress, TEMP_TOPIC_CAPABILITY, false, false, null, null);
     }
 
     public void expectTempTopicCreationAttach(final String dynamicAddress, boolean sendReponse)
     {
-        expectTempNodeCreationAttach(dynamicAddress, AmqpDestinationHelper.TEMP_TOPIC_CAPABILITY, sendReponse, false, false, null, null);
+        expectTempNodeCreationAttach(dynamicAddress, TEMP_TOPIC_CAPABILITY, sendReponse, false, false, null, null);
     }
 
     public void expectAndRefuseTempQueueCreationAttach(Symbol errorType, String errorMessage, boolean deferAttachResponseWrite)
     {
-        expectTempNodeCreationAttach(null, AmqpDestinationHelper.TEMP_QUEUE_CAPABILITY, true, deferAttachResponseWrite, errorType, errorMessage);
+        expectTempNodeCreationAttach(null, TEMP_QUEUE_CAPABILITY, true, deferAttachResponseWrite, errorType, errorMessage);
     }
 
     public void expectAndRefuseTempTopicCreationAttach(Symbol errorType, String errorMessage, boolean deferAttachResponseWrite)
     {
-        expectTempNodeCreationAttach(null, AmqpDestinationHelper.TEMP_TOPIC_CAPABILITY, true, deferAttachResponseWrite, errorType, errorMessage);
+        expectTempNodeCreationAttach(null, TEMP_TOPIC_CAPABILITY, true, deferAttachResponseWrite, errorType, errorMessage);
     }
 
     private void expectTempNodeCreationAttach(final String dynamicAddress, final Symbol nodeTypeCapability, final boolean refuseLink, boolean deferAttachResponseWrite, Symbol errorType, String errorMessage)
@@ -1584,9 +1607,9 @@ public class TestAmqpPeer implements AutoCloseable
     {
         Symbol[] sourceCapabilities;
         if(clientIdSet) {
-            sourceCapabilities = new Symbol[] { AmqpDestinationHelper.TOPIC_CAPABILITY, AmqpSupport.SHARED };
+            sourceCapabilities = new Symbol[] { TOPIC_CAPABILITY, SHARED };
         } else {
-            sourceCapabilities = new Symbol[] { AmqpDestinationHelper.TOPIC_CAPABILITY, AmqpSupport.SHARED, AmqpSupport.GLOBAL };
+            sourceCapabilities = new Symbol[] { TOPIC_CAPABILITY, SHARED, GLOBAL };
         }
 
         SourceMatcher sourceMatcher = new SourceMatcher();
@@ -1606,7 +1629,7 @@ public class TestAmqpPeer implements AutoCloseable
         // If we don't have the connection capability set we expect a desired link capability
         Matcher<?> linkDesiredCapabilitiesMatcher;
         if(expectLinkCapability) {
-            linkDesiredCapabilitiesMatcher = arrayContaining(new Symbol[] { AmqpSupport.SHARED_SUBS });
+            linkDesiredCapabilitiesMatcher = arrayContaining(new Symbol[] { SHARED_SUBS });
         } else {
             linkDesiredCapabilitiesMatcher = nullValue();
         }
@@ -1614,7 +1637,7 @@ public class TestAmqpPeer implements AutoCloseable
         // Generate offered capability response if supported
         Symbol[] linkOfferedCapabilitiesResponse = null;
         if(responseOffersLinkCapability) {
-             linkOfferedCapabilitiesResponse = new Symbol[] { AmqpSupport.SHARED_SUBS };
+             linkOfferedCapabilitiesResponse = new Symbol[] { SHARED_SUBS };
         }
 
         expectReceiverAttach(linkNameMatcher, sourceMatcher, false, refuseLink, false, false, null, null, null, linkDesiredCapabilitiesMatcher, linkOfferedCapabilitiesResponse);
@@ -1629,7 +1652,7 @@ public class TestAmqpPeer implements AutoCloseable
         sourceMatcher.withDurable(equalTo(TerminusDurability.UNSETTLED_STATE));
         sourceMatcher.withExpiryPolicy(equalTo(TerminusExpiryPolicy.NEVER));
 
-        sourceMatcher.withCapabilities(arrayContaining(AmqpDestinationHelper.TOPIC_CAPABILITY));
+        sourceMatcher.withCapabilities(arrayContaining(TOPIC_CAPABILITY));
 
         expectReceiverAttach(equalTo(subscriptionName), sourceMatcher);
     }
@@ -2484,13 +2507,15 @@ public class TestAmqpPeer implements AutoCloseable
             settledMatcher = Matchers.anyOf(equalTo(false), nullValue());
         }
 
-        Matcher<?> firstDeliveryIdMatcher = notNullValue();
+        Matcher<Object> firstDeliveryIdMatcher = notNullValue();
         if(firstDeliveryId != null) {
             firstDeliveryIdMatcher = equalTo(UnsignedInteger.valueOf(firstDeliveryId));
         }
 
-        Matcher<?> lastDeliveryIdMatcher = notNullValue();
-        if(lastDeliveryId != null) {
+        // Last can be null if the value is the same as first so in that case match on null or first to
+        // avoid error when remote optimizes the size of the disposition encoding.
+        Matcher<Object> lastDeliveryIdMatcher = Matchers.anyOf(nullValue(), firstDeliveryIdMatcher);
+        if(lastDeliveryId != null && lastDeliveryId != firstDeliveryId) {
             lastDeliveryIdMatcher = equalTo(UnsignedInteger.valueOf(lastDeliveryId));
         }
 

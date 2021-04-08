@@ -24,8 +24,8 @@ import static org.junit.Assert.assertTrue;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
 import org.junit.Test;
 
 public class AmqpMessageSupportTest {
@@ -71,21 +71,21 @@ public class AmqpMessageSupportTest {
 
     @Test
     public void testIsContentTypeWithNonNullSymbolValueAndNullContentType() {
-        assertFalse(AmqpMessageSupport.isContentType(Symbol.valueOf("test"), null));
+        assertFalse(AmqpMessageSupport.isContentType("test", null));
     }
 
     @Test
     public void testIsContentTypeWithNonNullSymbolValueAndNonNullContentTypeNotEqual() {
-        assertFalse(AmqpMessageSupport.isContentType(Symbol.valueOf("test"), Symbol.valueOf("fails")));
+        assertFalse(AmqpMessageSupport.isContentType("test", "fails"));
     }
 
     @Test
     public void testIsContentTypeWithNonNullSymbolValueAndNonNullContentTypeEqual() {
-        assertTrue(AmqpMessageSupport.isContentType(Symbol.valueOf("test"), Symbol.valueOf("test")));
+        assertTrue(AmqpMessageSupport.isContentType("test", "test"));
     }
 
     @Test
     public void testIsContentTypeWithNullSymbolValueAndNonNullContentType() {
-        assertFalse(AmqpMessageSupport.isContentType(null, Symbol.valueOf("test")));
+        assertFalse(AmqpMessageSupport.isContentType(null, "test"));
     }
 }

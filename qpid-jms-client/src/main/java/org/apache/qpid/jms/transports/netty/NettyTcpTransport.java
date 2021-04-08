@@ -17,6 +17,7 @@
 package org.apache.qpid.jms.transports.netty;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.security.Principal;
 import java.util.Objects;
@@ -34,6 +35,11 @@ import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.apache.qpid.jms.transports.TransportSupport;
 import org.apache.qpid.jms.util.IOExceptionSupport;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
+import org.apache.qpid.protonj2.buffer.ProtonCompositeBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonNettyByteBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonNettyByteBufferAllocator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -254,17 +260,41 @@ public class NettyTcpTransport implements Transport {
     }
 
     @Override
-    public void write(ByteBuf output) throws IOException {
+    public ProtonBufferAllocator getBufferAllocator() {
+        return new ProtonNettyByteBufferAllocator() {
+
+            @Override
+            public ProtonBuffer outputBuffer(int initialCapacity) {
+                return new ProtonNettyByteBuffer(channel.alloc().ioBuffer(initialCapacity));
+            }
+
+            @Override
+            public ProtonBuffer outputBuffer(int initialCapacity, int maximumCapacity) {
+                return new ProtonNettyByteBuffer(channel.alloc().ioBuffer(initialCapacity, maximumCapacity));
+            }
+        };
+     }
+
+    @Override
+    public void write(ProtonBuffer output) throws IOException {
         checkConnected(output);
         LOG.trace("Attempted write of buffer: {}", output);
-        channel.write(output, channel.voidPromise());
+        if (output instanceof ProtonCompositeBuffer) {
+            writeComposite((ProtonCompositeBuffer) output, false);
+        } else {
+            channel.write(toOutputBuffer(output), channel.voidPromise());
+        }
     }
 
     @Override
-    public void writeAndFlush(ByteBuf output) throws IOException {
+    public void writeAndFlush(ProtonBuffer output) throws IOException {
         checkConnected(output);
         LOG.trace("Attempted write and flush of buffer: {}", output);
-        channel.writeAndFlush(output, channel.voidPromise());
+        if (output instanceof ProtonCompositeBuffer) {
+            writeComposite((ProtonCompositeBuffer) output, true);
+        } else {
+            channel.writeAndFlush(toOutputBuffer(output), channel.voidPromise());
+        }
     }
 
     @Override
@@ -421,9 +451,11 @@ public class NettyTcpTransport implements Transport {
         }
     }
 
-    private void checkConnected(ByteBuf output) throws IOException {
+    private void checkConnected(ProtonBuffer output) throws IOException {
         if (!connected.get() || !channel.isActive()) {
-            ReferenceCountUtil.release(output);
+            if (output instanceof ProtonNettyByteBuffer) {
+                ReferenceCountUtil.release(output.unwrap());
+            }
             throw new IOException("Cannot send to a non-connected transport.");
         }
     }
@@ -508,6 +540,40 @@ public class NettyTcpTransport implements Transport {
         channel.pipeline().addLast(createChannelHandler());
     }
 
+    protected final void writeComposite(final ProtonCompositeBuffer composite, boolean flushAtEnd) throws IOException {
+        try {
+            composite.foreachInternalBuffer(this::writeBufferDelegate);
+        } catch (UncheckedIOException uioe) {
+            throw uioe.getCause();
+        }
+
+        if (flushAtEnd) {
+            channel.flush();
+        }
+    }
+
+    private final void writeBufferDelegate(ProtonBuffer buffer) {
+        try {
+            channel.write(toOutputBuffer(buffer), channel.voidPromise());
+        } catch (IOException ioe) {
+            throw new UncheckedIOException(ioe);
+        }
+    }
+
+    protected final ByteBuf toOutputBuffer(final ProtonBuffer output) throws IOException {
+        final ByteBuf nettyBuf;
+
+        if (output instanceof ProtonNettyByteBuffer) {
+            nettyBuf = (ByteBuf) output.unwrap();
+        } else {
+            ProtonNettyByteBuffer wrapped = new ProtonNettyByteBuffer(channel.alloc().ioBuffer(output.getReadableBytes()));
+            wrapped.writeBytes(output);
+            nettyBuf = wrapped.unwrap();
+        }
+
+        return nettyBuf;
+    }
+
     //----- Default implementation of Netty handler --------------------------//
 
     protected abstract class NettyDefaultHandler<E> extends SimpleChannelInboundHandler<E> {
@@ -558,12 +624,15 @@ public class NettyTcpTransport implements Transport {
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
             LOG.trace("New incoming data read: {}", buffer);
+
+            final ProtonNettyByteBuffer wrapped = new ProtonNettyByteBuffer(buffer);
+
             // Avoid all doubts to the contrary
             if (channel.eventLoop().inEventLoop()) {
-                listener.onData(buffer);
+                listener.onData(wrapped);
             } else {
                 channel.eventLoop().execute(() -> {
-                    listener.onData(buffer);
+                    listener.onData(wrapped);
                 });
             }
         }

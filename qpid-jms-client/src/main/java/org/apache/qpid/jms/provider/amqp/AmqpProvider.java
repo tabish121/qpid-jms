@@ -16,8 +16,10 @@
  */
 package org.apache.qpid.jms.provider.amqp;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
-import java.nio.ByteBuffer;
+import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -35,6 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import javax.net.ssl.SSLContext;
+import javax.security.sasl.SaslException;
 
 import org.apache.qpid.jms.JmsConnectionExtensions;
 import org.apache.qpid.jms.JmsTemporaryDestination;
@@ -53,7 +56,6 @@ import org.apache.qpid.jms.meta.JmsSessionId;
 import org.apache.qpid.jms.meta.JmsSessionInfo;
 import org.apache.qpid.jms.meta.JmsTransactionInfo;
 import org.apache.qpid.jms.provider.AsyncResult;
-import org.apache.qpid.jms.provider.NoOpAsyncResult;
 import org.apache.qpid.jms.provider.Provider;
 import org.apache.qpid.jms.provider.ProviderConstants.ACK_TYPE;
 import org.apache.qpid.jms.provider.ProviderException;
@@ -64,37 +66,35 @@ import org.apache.qpid.jms.provider.ProviderSynchronization;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpClosedConnectionBuilder;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpConnectionBuilder;
 import org.apache.qpid.jms.provider.exceptions.ProviderClosedException;
+import org.apache.qpid.jms.provider.exceptions.ProviderConnectionSecuritySaslException;
 import org.apache.qpid.jms.provider.exceptions.ProviderExceptionSupport;
 import org.apache.qpid.jms.provider.exceptions.ProviderFailedException;
-import org.apache.qpid.jms.provider.exceptions.ProviderIdleTimeoutException;
+import org.apache.qpid.jms.provider.exceptions.ProviderIOException;
 import org.apache.qpid.jms.provider.exceptions.ProviderIllegalStateException;
 import org.apache.qpid.jms.provider.exceptions.ProviderOperationTimedOutException;
 import org.apache.qpid.jms.provider.exceptions.ProviderTransactionInDoubtException;
-import org.apache.qpid.jms.sasl.Mechanism;
 import org.apache.qpid.jms.sasl.SaslMechanismFinder;
 import org.apache.qpid.jms.sasl.SaslSecurityRuntimeException;
 import org.apache.qpid.jms.transports.Transport;
 import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.util.PropertyUtil;
 import org.apache.qpid.jms.util.QpidJMSThreadFactory;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.transport.ErrorCondition;
-import org.apache.qpid.proton.engine.Collector;
-import org.apache.qpid.proton.engine.Connection;
-import org.apache.qpid.proton.engine.Delivery;
-import org.apache.qpid.proton.engine.EndpointState;
-import org.apache.qpid.proton.engine.Event;
-import org.apache.qpid.proton.engine.Event.Type;
-import org.apache.qpid.proton.engine.Sasl;
-import org.apache.qpid.proton.engine.SaslListener;
-import org.apache.qpid.proton.engine.impl.CollectorImpl;
-import org.apache.qpid.proton.engine.impl.TransportImpl;
-import org.apache.qpid.proton.engine.impl.TransportInternal;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.engine.Connection;
+import org.apache.qpid.protonj2.engine.ConnectionState;
+import org.apache.qpid.protonj2.engine.Engine;
+import org.apache.qpid.protonj2.engine.EngineSaslDriver.SaslState;
+import org.apache.qpid.protonj2.engine.exceptions.EngineStateException;
+import org.apache.qpid.protonj2.engine.exceptions.FrameDecodingException;
+import org.apache.qpid.protonj2.engine.exceptions.FrameEncodingException;
+import org.apache.qpid.protonj2.engine.exceptions.MalformedAMQPHeaderException;
+import org.apache.qpid.protonj2.engine.impl.ProtonEngineFactory;
+import org.apache.qpid.protonj2.engine.sasl.SaslOutcome;
+import org.apache.qpid.protonj2.engine.sasl.client.SaslAuthenticator;
+import org.apache.qpid.protonj2.engine.sasl.client.SaslCredentialsProvider;
+import org.apache.qpid.protonj2.engine.sasl.client.SaslMechanismSelector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufUtil;
 
 /**
  * An AMQP v1.0 Provider.
@@ -108,18 +108,13 @@ import io.netty.buffer.ByteBufUtil;
  * All work within this Provider is serialized to a single Thread.  Any asynchronous exceptions
  * will be dispatched from that Thread and all in-bound requests are handled there as well.
  */
-public class AmqpProvider implements Provider, TransportListener , AmqpResourceParent {
+public class AmqpProvider implements Provider, TransportListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpProvider.class);
 
-    private static final Logger TRACE_BYTES = LoggerFactory.getLogger(AmqpConnection.class.getPackage().getName() + ".BYTES");
-    private static final Logger TRACE_FRAMES = LoggerFactory.getLogger(AmqpConnection.class.getPackage().getName() + ".FRAMES");
     private static final int DEFAULT_MAX_FRAME_SIZE = 1024 * 1024 * 1;
-    // NOTE: Limit default channel max to signed short range to deal with
-    //       brokers that don't currently handle the unsigned range well.
-    private static final int DEFAULT_CHANNEL_MAX = 32767;
+    private static final int DEFAULT_CHANNEL_MAX = 65535;
     private static final AtomicInteger PROVIDER_SEQUENCE = new AtomicInteger();
-    private static final NoOpAsyncResult NOOP_REQUEST = new NoOpAsyncResult();
 
     private static final int DEFAULT_MAX_WRITE_BYTES_BEFORE_FLUSH = 128 * 1024;
     private static final int DEFAULT_ANONYMOUS_FALLBACK_CACHE_TIMEOUT = 30000;
@@ -127,20 +122,19 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
     private volatile ProviderListener listener;
     private volatile AmqpConnection connection;
-    private AmqpSaslAuthenticator authenticator;
     private final Transport transport;
     private String vhost;
-    private boolean traceFrames;
-    private int traceFramesPayloadLimit = AmqpProtocolTracer.DEFAULT_PAYLOAD_STRING_LIMIT;
     private boolean traceBytes;
+    private boolean traceFrames;
+    private boolean autoFlush = true;
     private boolean saslLayer = true;
     private Set<String> saslMechanisms;
     private JmsConnectionInfo connectionInfo;
-    private int channelMax = DEFAULT_CHANNEL_MAX;
     private int idleTimeout = 60000;
     private int drainTimeout = 60000;
     private long sessionOutoingWindow = -1; // Use proton default
     private int maxFrameSize = DEFAULT_MAX_FRAME_SIZE;
+    private int channelMax = DEFAULT_CHANNEL_MAX;
     private int maxWriteBytesBeforeFlush = DEFAULT_MAX_WRITE_BYTES_BEFORE_FLUSH;
     private int anonymousFallbackCacheTimeout = DEFAULT_ANONYMOUS_FALLBACK_CACHE_TIMEOUT;
     private int anonymousFallbackCacheSize = DEFAULT_ANONYMOUS_FALLBACK_CACHE_SIZE;
@@ -151,11 +145,8 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Throwable failureCause;
     private ScheduledExecutorService serializer;
-    private final org.apache.qpid.proton.engine.Transport protonTransport =
-        org.apache.qpid.proton.engine.Transport.Factory.create();
-    private final Collector protonCollector = new CollectorImpl();
-    private final Connection protonConnection = Connection.Factory.create();
-    private boolean protonTransportErrorHandled;
+    private Engine protonEngine;
+    private Connection protonConnection;
 
     private final ProviderFutureFactory futureFactory;
     private AsyncResult connectionRequest;
@@ -191,119 +182,35 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         // cannot be updated.  All further interaction should take place on the serializer for
         // thread safety.
 
-        ThreadFactory transportThreadFactory = new QpidJMSThreadFactory(
-                "AmqpProvider :(" + PROVIDER_SEQUENCE.incrementAndGet() + "):[" +
-                remoteURI.getScheme() + "://" + remoteURI.getHost() + ":" + remoteURI.getPort() + "]", true);
-
-        transport.setThreadFactory(transportThreadFactory);
-        transport.setTransportListener(AmqpProvider.this);
-        transport.setMaxFrameSize(maxFrameSize);
-
-        final SSLContext sslContextOverride;
-        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.SSL_CONTEXT)) {
-            sslContextOverride =
-                (SSLContext) connectionInfo.getExtensionMap().get(
-                    JmsConnectionExtensions.SSL_CONTEXT).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
-        } else {
-            sslContextOverride = null;
-        }
-
-        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER)) {
-            Supplier<?> proxyHandlerSupplier = (Supplier<?>) connectionInfo.getExtensionMap().get(
-                    JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
-            if (proxyHandlerSupplier != null) {
-                transport.getTransportOptions().setProxyHandlerSupplier(proxyHandlerSupplier);
-            }
-        }
-
-        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.HTTP_HEADERS_OVERRIDE)) {
-            @SuppressWarnings({ "unchecked" })
-            Map<String, String> headers = (Map<String, String>)
-                connectionInfo.getExtensionMap().get(
-                    JmsConnectionExtensions.HTTP_HEADERS_OVERRIDE).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
-            if (headers != null) {
-                transport.getTransportOptions().getHttpHeaders().putAll(headers);
-            }
-        }
+        final SSLContext sslContextOverride = configureTransport(connectionInfo);
 
         try {
             serializer = transport.connect(() -> {
                 this.connectionInfo = connectionInfo;
                 this.connectionRequest = connectRequest;
 
-                protonTransport.setEmitFlowEventOnSend(false);
-
-                try {
-                    ((TransportInternal) protonTransport).setUseReadOnlyOutputBuffer(false);
-                } catch (NoSuchMethodError nsme) {
-                    // using a version at runtime where the optimisation isn't available, ignore
-                    LOG.trace("Proton output buffer optimisation unavailable");
-                }
-
-                if (getMaxFrameSize() > 0) {
-                    protonTransport.setMaxFrameSize(getMaxFrameSize());
-                    protonTransport.setOutboundFrameSizeLimit(getMaxFrameSize());
-                }
-
-                protonTransport.setChannelMax(getChannelMax());
-                protonTransport.setIdleTimeout(idleTimeout);
-                protonTransport.bind(protonConnection);
-                protonConnection.collect(protonCollector);
-
                 if (saslLayer) {
-                    Sasl sasl = protonTransport.sasl();
-                    sasl.client();
+                    protonEngine = ProtonEngineFactory.PROTON.createEngine();
+                } else {
+                    protonEngine = ProtonEngineFactory.PROTON.createNonSaslEngine();
+                }
 
-                    String hostname = getVhost();
-                    if (hostname == null) {
-                        hostname = remoteURI.getHost();
-                    } else if (hostname.isEmpty()) {
-                        hostname = null;
-                    }
+                protonEngine.configuration().setBufferAllocator(transport.getBufferAllocator());
+                protonEngine.outputHandler(this::handleEngineOutput)
+                            .shutdownHandler(this::handleEngineShutdown)
+                            .errorHandler(this::handleEngineFailure);
 
-                    sasl.setRemoteHostname(hostname);
-                    sasl.setListener(new SaslListener() {
+                configureEngineSaslSupport();
 
-                        @Override
-                        public void onSaslMechanisms(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                            authenticator.handleSaslMechanisms(sasl, transport);
-                            checkSaslAuthenticationState();
-                        }
-
-                        @Override
-                        public void onSaslChallenge(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                            authenticator.handleSaslChallenge(sasl, transport);
-                            checkSaslAuthenticationState();
-                        }
-
-                        @Override
-                        public void onSaslOutcome(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                            authenticator.handleSaslOutcome(sasl, transport);
-                            checkSaslAuthenticationState();
-                        }
-
-                        @Override
-                        public void onSaslInit(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                            // Server only event
-                        }
-
-                        @Override
-                        public void onSaslResponse(Sasl sasl, org.apache.qpid.proton.engine.Transport transport) {
-                            // Server only event
-                        }
-                    });
-
-                    authenticator = new AmqpSaslAuthenticator((remoteMechanisms) -> findSaslMechanism(remoteMechanisms));
+                protonConnection = protonEngine.start();
+                protonConnection.setIdleTimeout(getIdleTimeout());
+                if (getMaxFrameSize() > 0) {
+                    protonConnection.setMaxFrameSize(getMaxFrameSize());
                 }
             }, sslContextOverride);
 
-            // Once connected pump the transport to write the header and respond to any
-            // data that arrived at connect such as pipelined Header etc
-            serializer.execute(() -> pumpToProtonTransport());
+            protonConnection.negotiate(amqpHeader -> connectRequest.onSuccess());
 
-            if (!saslLayer) {
-                connectRequest.onSuccess();
-            }
         } catch (Throwable t) {
             connectRequest.onFailure(ProviderExceptionSupport.createOrPassthroughFatal(t));
         }
@@ -350,23 +257,19 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                             } else {
                                 // If the SASL authentication occurred but failed then we don't
                                 // need to do an open / close
-                                if (authenticator != null && (!authenticator.isComplete() || !authenticator.wasSuccessful())) {
+                                if (protonEngine.saslDriver().getSaslState() == SaslState.AUTHENTICATION_FAILED) {
                                     request.onSuccess();
                                     return;
                                 }
 
                                 // Connection attempt might have been tried and failed so only perform
                                 // an open / close cycle if one hasn't been done already.
-                                if (protonConnection.getLocalState() == EndpointState.UNINITIALIZED) {
-                                    AmqpClosedConnectionBuilder builder = new AmqpClosedConnectionBuilder(getProvider(), connectionInfo);
-                                    builder.buildResource(request);
-                                    protonConnection.setContext(builder);
+                                if (protonConnection.getState() == ConnectionState.IDLE) {
+                                    new AmqpClosedConnectionBuilder(this, connectionInfo).buildEndpoint(request);
                                 } else {
                                     request.onSuccess();
                                 }
                             }
-
-                            pumpToProtonTransport(request);
                         } catch (Exception e) {
                             LOG.debug("Caught exception while closing proton connection: {}", e.getMessage());
                         } finally {
@@ -464,7 +367,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                             }
                         };
 
-                        builder.buildResource(connectionRequest);
+                        builder.buildEndpoint(connectionRequest, resource -> AmqpProvider.this.connection = resource);
                     }
 
                     @Override
@@ -482,8 +385,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                         session.begin(transactionInfo.getId(), request);
                     }
                 });
-
-                pumpToProtonTransport(request);
             } catch (Throwable t) {
                 request.onFailure(ProviderExceptionSupport.createNonFatalOrPassthrough(t));
             }
@@ -503,13 +404,16 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
                     @Override
                     public void processConsumerInfo(JmsConsumerInfo consumerInfo) throws Exception {
-                        AmqpSession session = connection.getSession(consumerInfo.getParentId());
-                        AmqpConsumer consumer = session.getConsumer(consumerInfo);
-                        consumer.start(request);
+                        final AmqpSession session;
+                        if (consumerInfo.isConnectionConsumer()) {
+                            session = connection.getConnectionSession();
+                        } else {
+                            session = connection.getSession(consumerInfo.getParentId());
+                        }
+
+                        session.getConsumer(consumerInfo).start(request);
                     }
                 });
-
-                pumpToProtonTransport(request);
             } catch (Throwable t) {
                 request.onFailure(ProviderExceptionSupport.createNonFatalOrPassthrough(t));
             }
@@ -529,13 +433,16 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
                     @Override
                     public void processConsumerInfo(JmsConsumerInfo consumerInfo) throws Exception {
-                        AmqpSession session = connection.getSession(consumerInfo.getParentId());
-                        AmqpConsumer consumer = session.getConsumer(consumerInfo);
-                        consumer.stop(request);
+                        final AmqpSession session;
+                        if (consumerInfo.isConnectionConsumer()) {
+                            session = connection.getConnectionSession();
+                        } else {
+                            session = connection.getSession(consumerInfo.getParentId());
+                        }
+
+                        session.getConsumer(consumerInfo).stop(request);
                     }
                 });
-
-                pumpToProtonTransport(request);
             } catch (Throwable t) {
                 request.onFailure(ProviderExceptionSupport.createNonFatalOrPassthrough(t));
             }
@@ -555,32 +462,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
                     @Override
                     public void processSessionInfo(JmsSessionInfo sessionInfo) throws Exception {
-                        final AmqpSession session = connection.getSession(sessionInfo.getId());
-                        session.close(new AsyncResult() {
-                            // TODO: bit of a hack, but works. Similarly below for locally initiated consumer close.
-                            @Override
-                            public void onSuccess() {
-                                onComplete();
-                                request.onSuccess();
-                            }
-
-                            @Override
-                            public void onFailure(ProviderException result) {
-                                onComplete();
-                                request.onFailure(result);
-                            }
-
-                            @Override
-                            public boolean isComplete() {
-                                return request.isComplete();
-                            }
-
-                            void onComplete() {
-                                // Mark the sessions resources closed, which in turn calls
-                                // the subscription cleanup.
-                                session.handleResourceClosure(AmqpProvider.this, null);
-                            }
-                        });
+                        connection.getSession(sessionInfo.getId()).close(request);
                     }
 
                     @Override
@@ -592,31 +474,8 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
                     @Override
                     public void processConsumerInfo(final JmsConsumerInfo consumerInfo) throws Exception {
-                        AmqpSession session = connection.getSession(consumerInfo.getParentId());
-                        final AmqpConsumer consumer = session.getConsumer(consumerInfo);
-                        consumer.close(new AsyncResult() {
-                            // TODO: bit of a hack, but works. Similarly above for locally initiated session close.
-                            @Override
-                            public void onSuccess() {
-                                onComplete();
-                                request.onSuccess();
-                            }
-
-                            @Override
-                            public void onFailure(ProviderException result) {
-                                onComplete();
-                                request.onFailure(result);
-                            }
-
-                            @Override
-                            public boolean isComplete() {
-                                return request.isComplete();
-                            }
-
-                            void onComplete() {
-                                connection.getSubTracker().consumerRemoved(consumerInfo);
-                            }
-                        });
+                        final AmqpSession session = connection.getSession(consumerInfo.getParentId());
+                        session.getConsumer(consumerInfo).close(request);
                     }
 
                     @Override
@@ -635,8 +494,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                         }
                     }
                 });
-
-                pumpToProtonTransport(request);
             } catch (Throwable t) {
                 request.onFailure(ProviderExceptionSupport.createNonFatalOrPassthrough(t));
             }
@@ -670,10 +527,9 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
             try {
                 checkClosedOrFailed();
-                AmqpSession amqpSession = connection.getSession(sessionId);
+                AmqpSession amqpSession = (AmqpSession) sessionId.getProviderHint();
                 if (amqpSession != null) {
                     amqpSession.acknowledge(ackType);
-                    pumpToProtonTransport(request);
                     request.onSuccess();
                 } else {
                     throw new ProviderIllegalStateException("Cannot acknowledge message from session that does not exist.");
@@ -697,18 +553,19 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                 JmsConsumerId consumerId = envelope.getConsumerId();
                 AmqpConsumer consumer = (AmqpConsumer) consumerId.getProviderHint();
 
-                consumer.acknowledge(envelope, ackType);
-
                 if (consumer.getSession().isAsyncAck()) {
                     request.onSuccess();
-                    pumpToProtonTransport(request);
+                    consumer.acknowledge(envelope, ackType);
                 } else {
-                    pumpToProtonTransport(request, false);
+                    autoFlush = false;
+                    consumer.acknowledge(envelope, ackType);
                     request.onSuccess();
                     transport.flush();
                 }
             } catch (Throwable t) {
                 request.onFailure(ProviderExceptionSupport.createNonFatalOrPassthrough(t));
+            } finally {
+                autoFlush = true;
             }
         });
     }
@@ -725,7 +582,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                 AmqpSession session = connection.getSession(transactionInfo.getSessionId());
                 if (session != null) {
                     session.commit(transactionInfo, nextTransactionId, request);
-                    pumpToProtonTransport(request);
                 } else {
                     if (transactionInfo.isInDoubt()) {
                         throw new ProviderTransactionInDoubtException("Commit of in-doubt transaction failed because no session exists");
@@ -751,7 +607,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                 AmqpSession session = connection.getSession(transactionInfo.getSessionId());
                 if (session != null) {
                     session.rollback(transactionInfo, nextTransactionId, request);
-                    pumpToProtonTransport(request);
                 } else {
                     if (transactionInfo.isInDoubt()) {
                         throw new ProviderTransactionInDoubtException("Rollback of in-doubt transaction failed because no session exists");
@@ -774,10 +629,9 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
             try {
                 checkClosedOrFailed();
-                AmqpSession session = connection.getSession(sessionId);
+                AmqpSession session = (AmqpSession) sessionId.getProviderHint();
                 if (session != null) {
                     session.recover();
-                    pumpToProtonTransport(request);
                     request.onSuccess();
                 } else {
                     throw new ProviderIllegalStateException("Cannot recover messages from session that does not exist");
@@ -798,7 +652,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
             try {
                 checkClosedOrFailed();
                 connection.unsubscribe(subscription, request);
-                pumpToProtonTransport(request);
             } catch (Throwable t) {
                 request.onFailure(ProviderExceptionSupport.createNonFatalOrPassthrough(t));
             }
@@ -816,7 +669,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                 checkClosedOrFailed();
                 AmqpConsumer consumer = (AmqpConsumer) consumerId.getProviderHint();
                 consumer.pull(timeout, request);
-                pumpToProtonTransport(request);
             } catch (Throwable t) {
                 request.onFailure(ProviderExceptionSupport.createNonFatalOrPassthrough(t));
             }
@@ -825,20 +677,10 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
     //---------- Event handlers and Utility methods  -------------------------//
 
-    private void updateTracer() {
-        if (isTraceFrames()) {
-            ((TransportImpl) protonTransport).setProtocolTracer(new AmqpProtocolTracer(TRACE_FRAMES, System.identityHashCode(protonTransport), traceFramesPayloadLimit));
-        }
-    }
-
-    public void scheduleExecuteAndPump(Runnable task) {
+    public void submitToEventLoop(Runnable task) {
         serializer.execute(() -> {
             try {
-                try {
-                    task.run();
-                } finally {
-                    pumpToProtonTransport();
-                }
+                task.run();
             } catch (Throwable t) {
                 LOG.warn("Caught problem during task processing: {}", t.getMessage(), t);
                 fireProviderException(ProviderExceptionSupport.createNonFatalOrPassthrough(t));
@@ -847,32 +689,19 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
     }
 
     @Override
-    public void onData(final ByteBuf input) {
+    public void onData(final ProtonBuffer input) {
         try {
             if (isTraceBytes()) {
-                TRACE_BYTES.info("Received: {}", ByteBufUtil.hexDump(input));
-            }
-
-            if(protonTransportErrorHandled) {
-                LOG.trace("Skipping data processing, proton transport previously errored.");
-                return;
+                // TODO TRACE_BYTES.info("Received: {}", ByteBufUtil.hexDump(input));
             }
 
             do {
-                ByteBuffer buffer = protonTransport.tail();
-                int chunkSize = Math.min(buffer.remaining(), input.readableBytes());
-                buffer.limit(buffer.position() + chunkSize);
-                input.readBytes(buffer);
-                protonTransport.process();
-            } while (input.isReadable());
-
-            // Process the state changes from the latest data and then answer back
-            // any pending updates to the Broker.
-            processUpdates();
-            pumpToProtonTransport();
-        } catch (Throwable t) {
-            LOG.warn("Caught problem during data processing: {}", t.getMessage(), t);
-            fireProviderException(ProviderExceptionSupport.createOrPassthroughFatal(t));
+                protonEngine.ingest(input);
+            } while (input.isReadable() && protonEngine.isWritable());
+            // TODO - How do we handle case of not all data read ?
+        } catch (EngineStateException e) {
+            LOG.warn("Caught problem during data processing: {}", e.getMessage(), e);
+            fireProviderException(ProviderExceptionSupport.createOrPassthroughFatal(e));
         }
     }
 
@@ -890,7 +719,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                 LOG.info("Transport failed: {}", error.getMessage());
                 if (!closed.get()) {
                     // We can't send any more output, so close the transport
-                    protonTransport.close_head();
+                    protonEngine.shutdown();
                     fireProviderException(ProviderExceptionSupport.createOrPassthroughFatal(error));
                 }
             });
@@ -909,201 +738,79 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
             serializer.execute(() -> {
                 LOG.debug("Transport connection remotely closed");
                 if (!closed.get()) {
-                    // We can't send any more output, so close the transport
-                    protonTransport.close_head();
-                    fireProviderException(new ProviderFailedException("Transport connection remotely closed."));
+                    // We can't send any more output, so fail the engine which will result in
+                    // provider shutdown and cleanup processing and an eventual signal to any
+                    // registered provider listener that there was a fatal error.
+                    protonEngine.engineFailed(new ProviderFailedException("Transport connection remotely closed."));
                 }
             });
         }
     }
 
-    private void checkSaslAuthenticationState() {
+    private void handleEngineOutput(ProtonBuffer output) {
         try {
-            if (authenticator.isComplete()) {
-                if (!authenticator.wasSuccessful()) {
-                    // Close the transport to avoid emitting any additional frames if the
-                    // authentication process was unsuccessful, then signal the completion
-                    // to avoid any race with the caller triggering any other traffic.
-                    // Don't release the authenticator as we need it on close to know what
-                    // the state of authentication was.
-                    org.apache.qpid.proton.engine.Transport t = protonConnection.getTransport();
-                    t.close_head();
-                    connectionRequest.onFailure(authenticator.getFailureCause());
+            if (autoFlush) {
+                transport.writeAndFlush(output);
+            } else {
+                transport.write(output);
+            }
+        } catch (IOException e) {
+            LOG.warn("Error while writing engine output to transport:", e);
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private void handleEngineFailure(Engine engine) {
+        LOG.trace("Engine failre reported, processing for shutdown.");
+        Throwable cause = engine.failureCause();
+        if (cause instanceof SaslException) {
+            failureCause = new ProviderConnectionSecuritySaslException(
+                cause.getMessage(), protonEngine.saslDriver().getSaslOutcome().ordinal(), cause);
+        } else if (cause instanceof MalformedAMQPHeaderException) {
+            if (saslLayer && protonEngine.saslDriver().getSaslOutcome() != SaslOutcome.SASL_OK) {
+                failureCause = new ProviderIOException("SASL header mismatch", cause);
+            } else {
+                failureCause = new ProviderIOException("AMQP header mismatch", cause);
+            }
+        } else if (cause instanceof FrameEncodingException || cause instanceof FrameDecodingException) {
+            failureCause = new ProviderFailedException(cause.getMessage(), cause);
+        } else if (failureCause == null) {
+            failureCause = ProviderExceptionSupport.createOrPassthroughFatal(cause);
+        }
+
+        protonEngine.shutdown();
+    }
+
+    private void handleEngineShutdown(Engine engine) {
+        LOG.trace("Engine shutdown handler running now, closed state: {}", closed.get());
+        if (closed.compareAndSet(false, true)) {
+            // Shut down outside of close processing so we always signal failure of some sort.
+            if (failureCause == null) {
+                if (engine.failureCause() != null) {
+                    failureCause = ProviderExceptionSupport.createOrPassthroughFatal(engine.failureCause());
                 } else {
-                    // Signal completion and release the authenticator we won't use it again.
-                    connectionRequest.onSuccess();
-                    authenticator = null;
+                    failureCause = new ProviderFailedException("Provider AMQP Engine shutdown for unknown reason.");
                 }
             }
-        } catch (Throwable ex) {
+
             try {
-                org.apache.qpid.proton.engine.Transport t = protonConnection.getTransport();
-                t.close_head();
-            } finally {
-                fireProviderException(ProviderExceptionSupport.createOrPassthroughFatal(ex));
+                protonConnection.close();
+            } catch (Exception ignore) {
             }
-        }
-    }
 
-    private void processUpdates() {
-        try {
-            Event protonEvent = null;
-            while ((protonEvent = protonCollector.peek()) != null) {
-                if (!protonEvent.getType().equals(Type.TRANSPORT)) {
-                    LOG.trace("New Proton Event: {}", protonEvent.getType());
-                }
-
-                AmqpEventSink amqpEventSink = null;
-                switch (protonEvent.getType()) {
-                    case CONNECTION_REMOTE_CLOSE:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getConnection().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processRemoteClose(this);
-                        }
-                        break;
-                    case CONNECTION_REMOTE_OPEN:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getConnection().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processRemoteOpen(this);
-                        }
-                        break;
-                    case SESSION_REMOTE_CLOSE:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getSession().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processRemoteClose(this);
-                        }
-                        break;
-                    case SESSION_REMOTE_OPEN:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getSession().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processRemoteOpen(this);
-                        }
-                        break;
-                    case LINK_REMOTE_CLOSE:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getLink().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processRemoteClose(this);
-                        }
-                        break;
-                    case LINK_REMOTE_DETACH:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getLink().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processRemoteDetach(this);
-                        }
-                        break;
-                    case LINK_REMOTE_OPEN:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getLink().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processRemoteOpen(this);
-                        }
-                        break;
-                    case LINK_FLOW:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getLink().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processFlowUpdates(this);
-                        }
-                        break;
-                    case DELIVERY:
-                        amqpEventSink = (AmqpEventSink) protonEvent.getLink().getContext();
-                        if (amqpEventSink != null) {
-                            amqpEventSink.processDeliveryUpdates(this, (Delivery) protonEvent.getContext());
-                        }
-                        break;
-                    case TRANSPORT_ERROR:
-                        // We handle authentication failure elsewhere, but in doing so we close the transport
-                        // head which would also get us here, so only action this if auth succeeded.
-                        if (authenticator == null || (authenticator.isComplete() && authenticator.wasSuccessful())) {
-                            protonTransportErrorHandled = true;
-                            ErrorCondition transportCondition = protonTransport.getCondition();
-                            String message = extractTransportErrorMessage(transportCondition);
-
-                            // Transport has failed, ensure that we see local end of connection as closed
-                            // so other shutdown processing doesn't mistakenly assume we can still get a
-                            // close from the remote.
-                            protonConnection.setCondition(transportCondition);
-                            protonConnection.close();
-
-                            throw new ProviderFailedException(message);
-                        }
-                        break;
-                    default:
-                        break;
-                }
-
-                protonCollector.pop();
-            }
-        } catch (Throwable t) {
             try {
-                LOG.warn("Caught problem during update processing: {}", t.getMessage(), t);
-            } finally {
-                fireProviderException(ProviderExceptionSupport.createOrPassthroughFatal(t));
+                transport.close();
+            } catch (IOException ignored) {
+            }
+
+            ProviderException pex = ProviderExceptionSupport.createOrPassthroughFatal(failureCause);
+            if (connectionRequest != null) {
+                connectionRequest.onFailure(pex);
+                connectionRequest = null;
+            } else {
+                fireProviderException(pex);
             }
         }
-    }
-
-    private static String extractTransportErrorMessage(ErrorCondition errorCondition) {
-        String message = "Error without description from proton Transport";
-        if (errorCondition != null) {
-            if (errorCondition.getDescription() != null && !errorCondition.getDescription().isEmpty()) {
-                message = "Error in proton Transport: " + errorCondition.getDescription();
-            }
-
-            Symbol condition = errorCondition.getCondition();
-            if (condition != null) {
-                message = message + " [condition = " + condition + "]";
-            }
-        }
-
-        return message;
-    }
-
-    protected boolean pumpToProtonTransport() {
-        return pumpToProtonTransport(NOOP_REQUEST, true);
-    }
-
-    protected boolean pumpToProtonTransport(AsyncResult request) {
-        return pumpToProtonTransport(request, true);
-    }
-
-    protected boolean pumpToProtonTransport(AsyncResult request, boolean flush) {
-        try {
-            boolean done = false;
-            int bytesWritten = 0;
-
-            while (!done) {
-                ByteBuffer toWrite = protonTransport.getOutputBuffer();
-                if (toWrite != null && toWrite.hasRemaining()) {
-                    ByteBuf outbound = transport.allocateSendBuffer(toWrite.remaining());
-                    outbound.writeBytes(toWrite);
-
-                    if (isTraceBytes()) {
-                        TRACE_BYTES.info("Sending: {}", ByteBufUtil.hexDump(outbound));
-                    }
-
-                    bytesWritten += outbound.readableBytes();
-                    if (flush && bytesWritten >= getMaxWriteBytesBeforeFlush()) {
-                        transport.flush();
-                        bytesWritten = 0;
-                    }
-
-                    transport.write(outbound);
-                    protonTransport.outputConsumed();
-                } else {
-                    done = true;
-                }
-            }
-
-            if (flush && bytesWritten > 0) {
-                transport.flush();
-            }
-        } catch (Throwable thrown) {
-            ProviderException pex = ProviderExceptionSupport.createOrPassthroughFatal(thrown);
-            fireProviderException(pex);
-            request.onFailure(pex);
-            return false;
-        }
-
-        return true;
     }
 
     void fireConnectionEstablished() {
@@ -1112,7 +819,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
         // Using nano time since it is not related to the wall clock, which may change
         long now = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
-        long deadline = protonTransport.tick(now);
+        long deadline = protonEngine.tick(now);
         if (deadline != 0) {
             long delay = deadline - now;
             LOG.trace("IdleTimeoutCheck being initiated, initial delay: {}", delay);
@@ -1158,18 +865,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         }
     }
 
-    @Override
-    public void addChildResource(AmqpResource resource) {
-        if (resource instanceof AmqpConnection) {
-            this.connection = (AmqpConnection) resource;
-        }
-    }
-
-    @Override
-    public void removeChildResource(AmqpResource resource) {
-        // No need to remove resources
-    }
-
     //---------- Property Setters and Getters --------------------------------//
 
     @Override
@@ -1190,29 +885,20 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         return futureFactory.createFuture(synchronization);
     }
 
-    public void setTraceFrames(boolean trace) {
-        this.traceFrames = trace;
-        updateTracer();
-    }
-
-    public boolean isTraceFrames() {
-        return this.traceFrames;
-    }
-
-    public int getTraceFramesPayloadLimit() {
-        return traceFramesPayloadLimit;
-    }
-
-    public void setTraceFramesPayloadLimit(int traceFramesPayloadLimit) {
-        this.traceFramesPayloadLimit = traceFramesPayloadLimit;
-    }
-
     public void setTraceBytes(boolean trace) {
         this.traceBytes = trace;
     }
 
     public boolean isTraceBytes() {
         return this.traceBytes;
+    }
+
+    public boolean isTraceFrames() {
+        return traceFrames;
+    }
+
+    public void setTraceFrames(boolean traceFrames) {
+        this.traceFrames = traceFrames;
     }
 
     public boolean isSaslLayer() {
@@ -1312,6 +998,14 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
     public int getMaxWriteBytesBeforeFlush() {
         return maxWriteBytesBeforeFlush;
+    }
+
+    public int getChannelMax() {
+        return channelMax;
+    }
+
+    public void setChannelMax(int channelMax) {
+        this.channelMax = channelMax;
     }
 
     /**
@@ -1423,14 +1117,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         return "AmqpProvider: " + getRemoteURI().getHost() + ":" + getRemoteURI().getPort();
     }
 
-    public int getChannelMax() {
-        return channelMax;
-    }
-
-    public void setChannelMax(int channelMax) {
-        this.channelMax = channelMax;
-    }
-
     public Transport getTransport() {
         return transport;
     }
@@ -1479,21 +1165,16 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         return alternates;
     }
 
-    public org.apache.qpid.proton.engine.Transport getProtonTransport() {
-        return protonTransport;
+    public Engine getProtonEngine() {
+        return protonEngine;
     }
 
     public Connection getProtonConnection() {
         return protonConnection;
     }
 
-    ScheduledExecutorService getScheduler() {
+    public ScheduledExecutorService getScheduler() {
         return this.serializer;
-    }
-
-    @Override
-    public AmqpProvider getProvider() {
-        return this;
     }
 
     /**
@@ -1514,7 +1195,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         if (timeout != JmsConnectionInfo.INFINITE) {
             return serializer.schedule(() -> {
                 request.onFailure(error);
-                pumpToProtonTransport();
             }, timeout, TimeUnit.MILLISECONDS);
         }
 
@@ -1539,7 +1219,6 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         if (timeout != JmsConnectionInfo.INFINITE) {
             return serializer.schedule(() -> {
                 request.onFailure(builder.createException());
-                pumpToProtonTransport();
             }, timeout, TimeUnit.MILLISECONDS);
         }
 
@@ -1564,60 +1243,129 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         }
     }
 
-    private Mechanism findSaslMechanism(String[] remoteMechanisms) throws SaslSecurityRuntimeException {
-        final String username;
-        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.USERNAME_OVERRIDE)) {
-            username = (String) connectionInfo.getExtensionMap().get(
-                JmsConnectionExtensions.USERNAME_OVERRIDE).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
+    private SSLContext configureTransport(JmsConnectionInfo connectionInfo) {
+        ThreadFactory transportThreadFactory = new QpidJMSThreadFactory(
+                "AmqpProvider :(" + PROVIDER_SEQUENCE.incrementAndGet() + "):[" +
+                remoteURI.getScheme() + "://" + remoteURI.getHost() + ":" + remoteURI.getPort() + "]", true);
+
+        transport.setThreadFactory(transportThreadFactory);
+        transport.setTransportListener(AmqpProvider.this);
+        transport.setMaxFrameSize(maxFrameSize);
+
+        final SSLContext sslContextOverride;
+        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.SSL_CONTEXT)) {
+            sslContextOverride =
+                (SSLContext) connectionInfo.getExtensionMap().get(
+                    JmsConnectionExtensions.SSL_CONTEXT).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
         } else {
-            username = connectionInfo.getUsername();
+            sslContextOverride = null;
         }
 
-        final String password;
-        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.PASSWORD_OVERRIDE)) {
-            password = (String) connectionInfo.getExtensionMap().get(
-                JmsConnectionExtensions.PASSWORD_OVERRIDE).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
-        } else {
-            password = connectionInfo.getPassword();
+        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER)) {
+            Supplier<?> proxyHandlerSupplier = (Supplier<?>) connectionInfo.getExtensionMap().get(
+                    JmsConnectionExtensions.PROXY_HANDLER_SUPPLIER).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
+            if (proxyHandlerSupplier != null) {
+                transport.getTransportOptions().setProxyHandlerSupplier(proxyHandlerSupplier);
+            }
         }
 
-        Mechanism mechanism = SaslMechanismFinder.findMatchingMechanism(
-            username, password, transport.getLocalPrincipal(), saslMechanisms, remoteMechanisms);
+        if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.HTTP_HEADERS_OVERRIDE)) {
+            @SuppressWarnings({ "unchecked" })
+            Map<String, String> headers = (Map<String, String>)
+                connectionInfo.getExtensionMap().get(
+                    JmsConnectionExtensions.HTTP_HEADERS_OVERRIDE).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
+            if (headers != null) {
+                transport.getTransportOptions().getHttpHeaders().putAll(headers);
+            }
+        }
 
-        mechanism.setUsername(username);
-        mechanism.setPassword(password);
+        return sslContextOverride;
+    }
 
+    private Engine configureEngineSaslSupport() {
+        if (saslLayer) {
+            SaslMechanismSelector mechSelector = new SaslMechanismFinder(saslMechanisms);
+            SaslAuthenticator authenticator = new SaslAuthenticator(mechSelector, new SaslCredentialsProvider() {
+
+                private final Map<String, Object> configOptions = createSaslOptions();
+
+                @Override
+                public String vhost() {
+                    String hostname = getVhost() != null ? getVhost() : remoteURI.getHost();
+                    if (hostname.isEmpty()) {
+                        hostname = null;
+                    }
+
+                    return hostname;
+                }
+
+                @Override
+                public String username() {
+                    if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.USERNAME_OVERRIDE)) {
+                        return (String) connectionInfo.getExtensionMap().get(
+                            JmsConnectionExtensions.USERNAME_OVERRIDE).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
+                    } else {
+                        return connectionInfo.getUsername();
+                    }
+                }
+
+                @Override
+                public String password() {
+                    if (connectionInfo.getExtensionMap().containsKey(JmsConnectionExtensions.PASSWORD_OVERRIDE)) {
+                        return (String) connectionInfo.getExtensionMap().get(
+                            JmsConnectionExtensions.PASSWORD_OVERRIDE).apply(connectionInfo.getConnection(), transport.getRemoteLocation());
+                    } else {
+                        return connectionInfo.getPassword();
+                    }
+                }
+
+                @Override
+                public Principal localPrincipal() {
+                    return transport.getLocalPrincipal();
+                }
+
+                @Override
+                public Map<String, Object> options() {
+                    return configOptions;
+                }
+            });
+
+            protonEngine.saslDriver().client().setListener(authenticator);
+        }
+
+        return protonEngine;
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private Map<String, Object> createSaslOptions() throws SaslSecurityRuntimeException {
         try {
-            Map<String, String> saslOptions = PropertyUtil.filterProperties(PropertyUtil.parseQuery(getRemoteURI()), "sasl.options.");
+            Map saslOptions =
+                PropertyUtil.filterProperties(PropertyUtil.parseQuery(getRemoteURI()),"sasl.options.");
+
             if (!saslOptions.containsKey("serverName")) {
                 saslOptions.put("serverName", remoteURI.getHost());
             }
 
-            mechanism.init(Collections.unmodifiableMap(saslOptions));
+            return Collections.unmodifiableMap(saslOptions);
         } catch (Exception ex) {
-            throw new SaslSecurityRuntimeException("Failed to apply sasl options to mechanism: " + mechanism.getName() + ", reason: " + ex.toString(), ex);
+            throw new SaslSecurityRuntimeException(
+                "Failed to create sasl options from URI configuration: reason: " + ex.toString(), ex);
         }
-
-        return mechanism;
     }
 
+    // TODO: Use auto tick feature in engine
     private final class IdleTimeoutCheck implements Runnable {
         @Override
         public void run() {
             boolean checkScheduled = false;
 
-            if (connection.getLocalState() == EndpointState.ACTIVE) {
+            if (connection.isOpen()) {
                 // Using nano time since it is not related to the wall clock, which may change
                 long now = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
-                long deadline = protonTransport.tick(now);
+                long deadline = protonEngine.tick(now);
 
-                boolean pumpSucceeded = pumpToProtonTransport();
-
-                if (protonTransport.isClosed()) {
+                if (protonEngine.isShutdown()) {
                     LOG.info("IdleTimeoutCheck closed the transport due to the peer exceeding our requested idle-timeout.");
-                    if (pumpSucceeded) {
-                        fireProviderException(new ProviderIdleTimeoutException("Transport closed due to the peer exceeding our requested idle-timeout"));
-                    }
                 } else {
                     if (deadline != 0) {
                         long delay = deadline - now;

@@ -39,19 +39,19 @@ import org.apache.qpid.jms.provider.WrappedAsyncResult;
 import org.apache.qpid.jms.provider.amqp.message.AmqpCodec;
 import org.apache.qpid.jms.provider.exceptions.ProviderExceptionSupport;
 import org.apache.qpid.jms.provider.exceptions.ProviderOperationTimedOutException;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.Accepted;
-import org.apache.qpid.proton.amqp.messaging.Released;
-import org.apache.qpid.proton.amqp.transport.DeliveryState;
-import org.apache.qpid.proton.engine.Delivery;
-import org.apache.qpid.proton.engine.Receiver;
+import org.apache.qpid.protonj2.engine.IncomingDelivery;
+import org.apache.qpid.protonj2.engine.Receiver;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.Accepted;
+import org.apache.qpid.protonj2.types.messaging.Released;
+import org.apache.qpid.protonj2.types.transport.DeliveryState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * AMQP Consumer object that is used to manage JMS MessageConsumer semantics.
  */
-public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver> {
+public class AmqpConsumer extends AmqpAbstractEndpoint<JmsConsumerInfo, Receiver> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpConsumer.class);
 
@@ -67,10 +67,14 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
     protected boolean deferredClose;
 
     public AmqpConsumer(AmqpSession session, JmsConsumerInfo info, Receiver receiver) {
-        super(info, receiver, session);
+        super(session.getProvider(), info, receiver);
 
         this.session = session;
         this.acknowledgementMode = info.getAcknowledgementMode();
+
+        receiver.creditStateUpdateHandler(this::handleCreditStateUpdate)
+                .deliveryStateUpdatedHandler(this::handleDeliveryReadOrUpdated)
+                .deliveryReadHandler(this::handleDeliveryReadOrUpdated);
     }
 
     @Override
@@ -80,9 +84,11 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
         // If we have pending deliveries we remain open to allow for ACK or for a
         // pending transaction that this consumer is active in to complete.
         if (shouldDeferClose()) {
+            LOG.info("Consumer {} deferring close until delivered work is completed", getConsumerId());
             deferredClose = true;
             stop(new StopAndReleaseRequest(request));
         } else {
+            LOG.info("Consumer {} closing immediately", getConsumerId());
             super.close(request);
         }
     }
@@ -94,20 +100,12 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
                         || acknowledgementMode == INDIVIDUAL_ACKNOWLEDGE) {
             // Send dispositions for any messages which were previously delivered and
             // session recovered, but were then not delivered again afterwards.
-            Delivery delivery = getEndpoint().head();
-            while (delivery != null) {
-                Delivery current = delivery;
-                delivery = delivery.next();
-
-                if (!(current.getContext() instanceof JmsInboundMessageDispatch)) {
-                    continue;
-                }
-
-                JmsInboundMessageDispatch envelope = (JmsInboundMessageDispatch) current.getContext();
+            getEndpoint().unsettled().forEach(delivery -> {
+                JmsInboundMessageDispatch envelope = delivery.getLinkedResource(JmsInboundMessageDispatch.class);
                 if (envelope.isRecovered() && !envelope.isDelivered()) {
-                    handleDisposition(envelope, current, MODIFIED_FAILED);
+                    handleDisposition(envelope, delivery, MODIFIED_FAILED);
                 }
-            }
+            });
         }
     }
 
@@ -135,44 +133,17 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
      */
     public void stop(AsyncResult request) {
         Receiver receiver = getEndpoint();
-        if (receiver.getRemoteCredit() <= 0) {
-            if (receiver.getQueued() == 0) {
-                // We have no remote credit and all the deliveries have been processed.
-                request.onSuccess();
-            } else {
-                // There are still deliveries to process, wait for them to be.
-                if (getDrainTimeout() > 0) {
-                    // If the remote doesn't respond we will close the consumer and break any
-                    // blocked receive or stop calls that are waiting, unless the consumer is
-                    // a participant in a transaction in which case we will just fail the request
-                    // and leave the consumer open since the TX needs it to remain active.
-                    final ScheduledFuture<?> future = getSession().schedule(() -> {
-                        LOG.trace("Consumer {} stop timed out awaiting message processing", getConsumerId());
-                        ProviderException cause = new ProviderOperationTimedOutException("Consumer stop timed out awaiting message processing");
-                        if (session.isTransacted() && session.getTransactionContext().isInTransaction(getConsumerId())) {
-                            stopRequest.onFailure(cause);
-                            stopRequest = null;
-                        } else {
-                            closeResource(session.getProvider(), cause, false);
-                            session.getProvider().pumpToProtonTransport();
-                        }
-                    }, getDrainTimeout());
-
-                    stopRequest = new ScheduledRequest(future, request);
-                } else {
-                    stopRequest = request;
-                }
-
-                LOG.trace("Consumer {} stop awaiting queued delivery processing", getConsumerId());
-            }
-        } else {
+        if (receiver.getCredit() > 0) {
             // TODO: We don't actually want the additional messages that could be sent while
             // draining. We could explicitly reduce credit first, or possibly use 'echo' instead
             // of drain if it was supported. We would first need to understand what happens
             // if we reduce credit below the number of messages already in-flight before
             // the peer sees the update.
             stopRequest = request;
-            receiver.drain(0);
+
+            if (!receiver.isDraining()) {
+                receiver.drain();
+            }
 
             if (getDrainTimeout() > 0) {
                 // If the remote doesn't respond we will close the consumer and break any
@@ -186,8 +157,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
                         stopRequest.onFailure(cause);
                         stopRequest = null;
                     } else {
-                        closeResource(session.getProvider(), cause, false);
-                        session.getProvider().pumpToProtonTransport();
+                        close(cause);
                     }
                 }, getDrainTimeout());
 
@@ -202,35 +172,9 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
         final ScheduledFuture<?> future = getSession().schedule(() -> {
             LOG.trace("Consumer {} running scheduled stop", getConsumerId());
             stop(request);
-            session.getProvider().pumpToProtonTransport(request);
         }, timeout);
 
         stopRequest = new ScheduledRequest(future, request);
-    }
-
-    @Override
-    public void processFlowUpdates(AmqpProvider provider) throws ProviderException {
-        // Check if we tried to stop and have now run out of credit, and
-        // processed all locally queued messages
-        if (stopRequest != null) {
-            Receiver receiver = getEndpoint();
-            if (receiver.getRemoteCredit() <= 0 && receiver.getQueued() == 0) {
-                stopRequest.onSuccess();
-                stopRequest = null;
-            }
-        }
-
-        if (pullRequest != null) {
-            Receiver receiver = getEndpoint();
-            if (receiver.getRemoteCredit() <= 0 && receiver.getQueued() == 0) {
-                pullRequest.onSuccess();
-                pullRequest = null;
-            }
-        }
-
-        LOG.trace("Consumer {} flow updated, remote credit = {}", getConsumerId(), getEndpoint().getRemoteCredit());
-
-        super.processFlowUpdates(provider);
     }
 
     /**
@@ -246,19 +190,11 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
      */
     public void acknowledge(ACK_TYPE ackType) {
         LOG.trace("Session Acknowledge for consumer {} with ack type {}", getResourceInfo().getId(), ackType);
-        Delivery delivery = getEndpoint().head();
-        while (delivery != null) {
-            Delivery current = delivery;
-            delivery = delivery.next();
 
-            if (!(current.getContext() instanceof JmsInboundMessageDispatch)) {
-                LOG.debug("{} Found incomplete delivery with no context during session acknowledge processing", AmqpConsumer.this);
-                continue;
-            }
-
-            JmsInboundMessageDispatch envelope = (JmsInboundMessageDispatch) current.getContext();
+        getEndpoint().unsettled().forEach(delivery -> {
+            JmsInboundMessageDispatch envelope = delivery.getLinkedResource(JmsInboundMessageDispatch.class);
             if (ackType == ACK_TYPE.SESSION_SHUTDOWN && (envelope.isDelivered() || envelope.isRecovered())) {
-                handleDisposition(envelope, current, MODIFIED_FAILED);
+                handleDisposition(envelope, delivery, MODIFIED_FAILED);
             } else if (envelope.isDelivered()) {
                 final DeliveryState disposition;
 
@@ -282,9 +218,9 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
                         throw new IllegalArgumentException("Invalid acknowledgement type specified: " + ackType);
                 }
 
-                handleDisposition(envelope, current, disposition);
+                handleDisposition(envelope, delivery, disposition);
             }
-        }
+        });
 
         tryCompleteDeferredClose();
     }
@@ -298,44 +234,41 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
      *        the type of acknowledgement to perform.
      */
     public void acknowledge(JmsInboundMessageDispatch envelope, ACK_TYPE ackType) {
-        Delivery delivery = null;
+        final IncomingDelivery delivery = envelope.getProviderHint(IncomingDelivery.class);
 
-        if (envelope.getProviderHint() instanceof Delivery) {
-            delivery = (Delivery) envelope.getProviderHint();
+        if (delivery != null) {
+            switch (ackType) {
+                case DELIVERED:
+                    handleDelivered(envelope, delivery);
+                    break;
+                case ACCEPTED:
+                    handleAccepted(envelope, delivery);
+                    break;
+                case REJECTED:
+                    handleDisposition(envelope, delivery, REJECTED);
+                    break;
+                case RELEASED:
+                    handleDisposition(envelope, delivery, Released.getInstance());
+                    break;
+                case MODIFIED_FAILED:
+                    handleDisposition(envelope, delivery, MODIFIED_FAILED);
+                    break;
+                case MODIFIED_FAILED_UNDELIVERABLE:
+                    handleDisposition(envelope, delivery, MODIFIED_FAILED_UNDELIVERABLE);
+                    break;
+                default:
+                    LOG.warn("Unsupported Ack Type for message: {}", envelope);
+                    throw new IllegalArgumentException("Unknown Acknowledgement type");
+            }
+
+            sendFlowIfNeeded();
+            tryCompleteDeferredClose();
         } else {
             LOG.warn("Received Ack for unknown message: {}", envelope);
-            return;
         }
-
-        switch (ackType) {
-            case DELIVERED:
-                handleDelivered(envelope, delivery);
-                break;
-            case ACCEPTED:
-                handleAccepted(envelope, delivery);
-                break;
-            case REJECTED:
-                handleDisposition(envelope, delivery, REJECTED);
-                break;
-            case RELEASED:
-                handleDisposition(envelope, delivery, Released.getInstance());
-                break;
-            case MODIFIED_FAILED:
-                handleDisposition(envelope, delivery, MODIFIED_FAILED);
-                break;
-            case MODIFIED_FAILED_UNDELIVERABLE:
-                handleDisposition(envelope, delivery, MODIFIED_FAILED_UNDELIVERABLE);
-                break;
-            default:
-                LOG.warn("Unsupported Ack Type for message: {}", envelope);
-                throw new IllegalArgumentException("Unknown Acknowledgement type");
-        }
-
-        sendFlowIfNeeded();
-        tryCompleteDeferredClose();
     }
 
-    private void handleDelivered(JmsInboundMessageDispatch envelope, Delivery delivery) {
+    private void handleDelivered(JmsInboundMessageDispatch envelope, IncomingDelivery delivery) {
         LOG.debug("Delivered Ack of message: {}", envelope);
         deliveredCount++;
         envelope.setRecovered(false);
@@ -343,9 +276,9 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
         delivery.setDefaultDeliveryState(MODIFIED_FAILED);
     }
 
-    private void handleAccepted(JmsInboundMessageDispatch envelope, Delivery delivery) {
+    private void handleAccepted(JmsInboundMessageDispatch envelope, IncomingDelivery delivery) {
         LOG.debug("Accepted Ack of message: {}", envelope);
-        if (!delivery.remotelySettled()) {
+        if (!delivery.isRemotelySettled()) {
             if (session.isTransacted() && !getResourceInfo().isBrowser()) {
                 if (session.isTransactionInDoubt()) {
                     LOG.trace("Skipping ack of message {} in failed transaction.", envelope);
@@ -354,13 +287,11 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
 
                 Binary txnId = session.getTransactionContext().getAmqpTransactionId();
                 if (txnId != null) {
-                    delivery.disposition(session.getTransactionContext().getTxnAcceptState());
-                    delivery.settle();
+                    delivery.disposition(session.getTransactionContext().getTxnAcceptState(), true);
                     session.getTransactionContext().registerTxConsumer(this);
                 }
             } else {
-                delivery.disposition(Accepted.getInstance());
-                delivery.settle();
+                delivery.disposition(Accepted.getInstance(), true);
             }
         } else {
             delivery.settle();
@@ -372,9 +303,8 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
         dispatchedCount--;
     }
 
-    private void handleDisposition(JmsInboundMessageDispatch envelope, Delivery delivery, DeliveryState outcome) {
-        delivery.disposition(outcome);
-        delivery.settle();
+    private void handleDisposition(JmsInboundMessageDispatch envelope, IncomingDelivery delivery, DeliveryState outcome) {
+        delivery.disposition(outcome, true);
         if (envelope.isDelivered()) {
             deliveredCount--;
         }
@@ -388,7 +318,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
      */
     private void sendFlowIfNeeded() {
         int prefetchSize = getResourceInfo().getPrefetchSize();
-        if (prefetchSize == 0 || isStopping()) {
+        if (prefetchSize == 0 || isStopping() || deferredClose) {
             // TODO: isStopping isn't effective when this method is called following
             // processing the last of any messages received while stopping, since that
             // happens just after we stopped. That may be ok in some situations however, and
@@ -404,7 +334,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
                 int additionalCredit = prefetchSize - potentialPrefetch;
 
                 LOG.trace("Consumer {} granting additional credit: {}", getConsumerId(), additionalCredit);
-                getEndpoint().flow(additionalCredit);
+                getEndpoint().addCredit(additionalCredit);
             }
         }
     }
@@ -414,7 +344,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
         if (currentCredit < 1) {
             int additionalCredit = 1 - currentCredit;
             LOG.trace("Consumer {} granting additional credit: {}", getConsumerId(), additionalCredit);
-            getEndpoint().flow(additionalCredit);
+            getEndpoint().addCredit(additionalCredit);
         }
     }
 
@@ -428,17 +358,8 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
 
         ArrayList<JmsInboundMessageDispatch> redispatchList = new ArrayList<JmsInboundMessageDispatch>();
 
-        Delivery delivery = getEndpoint().head();
-        while (delivery != null) {
-            Delivery current = delivery;
-            delivery = delivery.next();
-
-            if (!(current.getContext() instanceof JmsInboundMessageDispatch)) {
-                LOG.debug("{} Found incomplete delivery with no context during recover processing", AmqpConsumer.this);
-                continue;
-            }
-
-            JmsInboundMessageDispatch envelope = (JmsInboundMessageDispatch) current.getContext();
+        getEndpoint().unsettled().forEach((delivery) -> {
+            JmsInboundMessageDispatch envelope = delivery.getLinkedResource(JmsInboundMessageDispatch.class);
             if (envelope.isDelivered()) {
                 envelope.getMessage().getFacade().setRedeliveryCount(
                     envelope.getMessage().getFacade().getRedeliveryCount() + 1);
@@ -448,7 +369,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
 
                 redispatchList.add(envelope);
             }
-        }
+        });
 
         // Previously delivered messages should be tagged as dispatched messages again so we
         // can properly compute the next credit refresh, so subtract them from both the delivered
@@ -487,7 +408,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
             // Wait until message arrives. Just give credit if needed.
             if (getEndpoint().getCredit() == 0) {
                 LOG.trace("Consumer {} granting 1 additional credit for pull.", getConsumerId());
-                getEndpoint().flow(1);
+                getEndpoint().addCredit(1);
             }
 
             // Await the message arrival
@@ -496,9 +417,9 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
             // If we have no credit then we need to issue some so that we can
             // try to fulfill the request, then drain down what is there to
             // ensure we consume what is available and remove all credit.
-            if (getEndpoint().getCredit() == 0){
+            if (getEndpoint().getCredit() == 0) {
                 LOG.trace("Consumer {} granting 1 additional credit for pull.", getConsumerId());
-                getEndpoint().flow(1);
+                getEndpoint().drain(1);
             }
 
             // Drain immediately and wait for the message(s) to arrive,
@@ -510,7 +431,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
             // ensure we consume what is available and remove all credit.
             if (getEndpoint().getCredit() == 0) {
                 LOG.trace("Consumer {} granting 1 additional credit for pull.", getConsumerId());
-                getEndpoint().flow(1);
+                getEndpoint().addCredit(1);
             }
 
             // Wait for the timeout for the message(s) to arrive, then drain if required
@@ -520,13 +441,12 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
         }
     }
 
-    @Override
-    public void processDeliveryUpdates(AmqpProvider provider, Delivery delivery) throws ProviderException {
+    public void processDeliveryUpdates(AmqpProvider provider, IncomingDelivery delivery) throws ProviderException {
         if (delivery.getDefaultDeliveryState() == null){
             delivery.setDefaultDeliveryState(Released.getInstance());
         }
 
-        if (delivery.isReadable() && !delivery.isPartial()) {
+        if (!delivery.isPartial()) {
             LOG.trace("{} has incoming Message(s).", this);
             try {
                 if (processDelivery(delivery)) {
@@ -542,61 +462,108 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
             }
         }
 
-        if (getEndpoint().current() == null) {
-            // We have exhausted the locally queued messages on this link.
-            // Check if we tried to stop and have now run out of credit.
-            if (getEndpoint().getRemoteCredit() <= 0) {
-                if (stopRequest != null) {
-                    stopRequest.onSuccess();
-                    stopRequest = null;
-                }
+        // We have exhausted the locally queued messages on this link.
+        // Check if we tried to stop and have now run out of credit.
+        if (getEndpoint().getCredit() <= 0) {
+            if (stopRequest != null) {
+                stopRequest.onSuccess();
+                stopRequest = null;
             }
         }
-
-        super.processDeliveryUpdates(provider, delivery);
     }
 
-    private boolean processDelivery(Delivery incoming) throws Exception {
+    private boolean processDelivery(IncomingDelivery incoming) throws Exception {
         JmsMessage message = null;
         try {
-            message = AmqpCodec.decodeMessage(this, getEndpoint().recv()).asJmsMessage();
+            message = AmqpCodec.decodeMessage(this, incoming.readAll()).asJmsMessage();
         } catch (Exception e) {
             LOG.warn("Error on transform: {}", e.getMessage());
+            LOG.trace("Error from transform of message: ", e);
             // TODO - We could signal provider error but not sure we want to fail
             //        the connection just because we can't convert the message.
             //        In the future once the JMS mapping is complete we should be
             //        able to convert everything to some message even if its just
             //        a bytes messages as a fall back.
-            incoming.disposition(MODIFIED_FAILED_UNDELIVERABLE);
-            incoming.settle();
+            incoming.disposition(MODIFIED_FAILED_UNDELIVERABLE, true);
             // TODO: this flows credit, which we might not want, e.g if
             // a drain was issued to stop the link.
             sendFlowIfNeeded();
             return false;
         }
 
-        try {
-            // Let the message do any final processing before sending it onto a consumer.
-            // We could defer this to a later stage such as the JmsConnection or even in
-            // the JmsMessageConsumer dispatch method if we needed to.
-            message.onDispatch();
+        // Let the message do any final processing before sending it onto a consumer.
+        // We could defer this to a later stage such as the JmsConnection or even in
+        // the JmsMessageConsumer dispatch method if we needed to.
+        message.onDispatch();
 
-            JmsInboundMessageDispatch envelope = new JmsInboundMessageDispatch(getNextIncomingSequenceNumber());
-            envelope.setMessage(message);
-            envelope.setConsumerId(getResourceInfo().getId());
-            envelope.setConsumerInfo(getResourceInfo());
-            // Store link to delivery in the hint for use in acknowledge requests.
-            envelope.setProviderHint(incoming);
-            envelope.setMessageId(message.getFacade().getProviderMessageIdObject());
+        JmsInboundMessageDispatch envelope = new JmsInboundMessageDispatch(getNextIncomingSequenceNumber());
+        envelope.setMessage(message);
+        envelope.setConsumerId(getResourceInfo().getId());
+        envelope.setConsumerInfo(getResourceInfo());
+        // Store link to delivery in the hint for use in acknowledge requests.
+        envelope.setProviderHint(incoming);
+        envelope.setMessageId(message.getFacade().getProviderMessageIdObject());
 
-            // Store reference to envelope in delivery context for recovery
-            incoming.setContext(envelope);
+        // Store reference to envelope in delivery context for recovery
+        incoming.setLinkedResource(envelope);
 
-            deliver(envelope);
+        deliver(envelope);
 
-            return true;
-        } finally {
-            getEndpoint().advance();
+        return true;
+    }
+
+    private void handleCreditStateUpdate(Receiver receiver) {
+        // Check if we tried to stop and have now run out of credit, and
+        // processed all locally queued messages
+        if (stopRequest != null) {
+            if (receiver.getCredit() == 0) {
+                stopRequest.onSuccess();
+                stopRequest = null;
+            }
+        }
+
+        if (pullRequest != null) {
+            if (receiver.getCredit() == 0) {
+                pullRequest.onSuccess();
+                pullRequest = null;
+            }
+        }
+
+        LOG.trace("Consumer {} drain state updated, remote credit = {}", getConsumerId(), receiver.getCredit());
+    }
+
+    private void handleDeliveryReadOrUpdated(IncomingDelivery delivery) {
+        if (delivery.getDefaultDeliveryState() == null){
+            delivery.setDefaultDeliveryState(Released.getInstance());
+        }
+
+        if (delivery.isAborted()) {
+            delivery.settle();
+            sendFlowIfNeeded();
+        } else  if (!delivery.isPartial() && delivery.available() != 0) {
+            LOG.trace("{} has incoming Message(s).", this);
+            try {
+                if (processDelivery(delivery)) {
+                    // We processed a message, signal completion
+                    // of a message pull request if there is one.
+                    if (pullRequest != null) {
+                        pullRequest.onSuccess();
+                        pullRequest = null;
+                    }
+                }
+            } catch (Exception e) {
+                // TODO: Close the Endpoint for now need to figure out what else should happen
+                close(ProviderExceptionSupport.createNonFatalOrPassthrough(e));
+            }
+        }
+
+        // We have exhausted the locally queued messages on this link.
+        // Check if we tried to stop and have now run out of credit.
+        if (getEndpoint().getCredit() <= 0) {
+            if (stopRequest != null) {
+                stopRequest.onSuccess();
+                stopRequest = null;
+            }
         }
     }
 
@@ -605,7 +572,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
     }
 
     @Override
-    protected void closeOrDetachEndpoint() {
+    protected void doCloseOfWrappedEndpoint() {
         if (getResourceInfo().isDurable()) {
             getEndpoint().detach();
         } else {
@@ -671,7 +638,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
     }
 
     @Override
-    public void handleResourceClosure(AmqpProvider provider, ProviderException cause) {
+    protected void processEndpointClosed() {
         AmqpConnection connection = session.getConnection();
         AmqpSubscriptionTracker subTracker = connection.getSubTracker();
         JmsConsumerInfo consumerInfo = getResourceInfo();
@@ -679,6 +646,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
         subTracker.consumerRemoved(consumerInfo);
 
         // When closed we need to release any pending tasks to avoid blocking
+        final ProviderException cause = getFailureCause();
 
         if (stopRequest != null) {
             if (cause == null) {
@@ -718,21 +686,12 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
     }
 
     private void releasePrefetch() {
-        Delivery delivery = getEndpoint().head();
-
-        while (delivery != null) {
-            Delivery current = delivery;
-            delivery = delivery.next();
-
-            if (current.getContext() instanceof JmsInboundMessageDispatch) {
-                JmsInboundMessageDispatch envelope = (JmsInboundMessageDispatch) current.getContext();
-                if (!envelope.isDelivered()) {
-                    handleDisposition(envelope, current, Released.getInstance());
-                }
-            } else {
-                LOG.debug("{} Found incomplete delivery with no context during release processing", AmqpConsumer.this);
+        getEndpoint().unsettled().forEach(delivery -> {
+            JmsInboundMessageDispatch envelope = delivery.getLinkedResource(JmsInboundMessageDispatch.class);
+            if (!envelope.isDelivered()) {
+                handleDisposition(envelope, delivery, Released.getInstance());
             }
-        }
+        });
     }
 
     //----- Inner class used to report on deferred close ---------------------//
@@ -759,7 +718,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
         @Override
         public void onFailure(ProviderException result) {
             LOG.trace("Failed deferred close of consumer: {} - {}", getConsumerId(), result.getMessage());
-            getParent().getProvider().fireNonFatalProviderException(ProviderExceptionSupport.createNonFatalOrPassthrough(result));
+            getProvider().fireNonFatalProviderException(ProviderExceptionSupport.createNonFatalOrPassthrough(result));
         }
 
         @Override

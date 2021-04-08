@@ -16,7 +16,8 @@
  */
 package org.apache.qpid.jms.provider.amqp;
 
-import java.nio.BufferOverflowException;
+import java.util.ArrayDeque;
+import java.util.Queue;
 import java.util.concurrent.ScheduledFuture;
 
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
@@ -25,21 +26,22 @@ import org.apache.qpid.jms.meta.JmsTransactionId;
 import org.apache.qpid.jms.provider.AsyncResult;
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.amqp.AmqpTransactionContext.DischargeCompletion;
-import org.apache.qpid.jms.provider.exceptions.ProviderExceptionSupport;
+import org.apache.qpid.jms.provider.amqp.message.AmqpCodec;
 import org.apache.qpid.jms.provider.exceptions.ProviderIllegalStateException;
 import org.apache.qpid.jms.provider.exceptions.ProviderOperationTimedOutException;
 import org.apache.qpid.jms.provider.exceptions.ProviderTransactionInDoubtException;
 import org.apache.qpid.jms.provider.exceptions.ProviderTransactionRolledBackException;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Rejected;
-import org.apache.qpid.proton.amqp.transaction.Declare;
-import org.apache.qpid.proton.amqp.transaction.Declared;
-import org.apache.qpid.proton.amqp.transaction.Discharge;
-import org.apache.qpid.proton.amqp.transport.DeliveryState;
-import org.apache.qpid.proton.engine.Delivery;
-import org.apache.qpid.proton.engine.Sender;
-import org.apache.qpid.proton.message.Message;
+import org.apache.qpid.protonj2.engine.OutgoingDelivery;
+import org.apache.qpid.protonj2.engine.Sender;
+import org.apache.qpid.protonj2.engine.impl.ProtonDeliveryTagGenerator;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Rejected;
+import org.apache.qpid.protonj2.types.messaging.Section;
+import org.apache.qpid.protonj2.types.transactions.Declare;
+import org.apache.qpid.protonj2.types.transactions.Declared;
+import org.apache.qpid.protonj2.types.transactions.Discharge;
+import org.apache.qpid.protonj2.types.transport.DeliveryState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,76 +49,85 @@ import org.slf4j.LoggerFactory;
  * Represents the AMQP Transaction coordinator link used by the transaction context
  * of a session to control the lifetime of a given transaction.
  */
-public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionInfo, Sender> {
+public class AmqpTransactionCoordinator extends AmqpAbstractEndpoint<JmsSessionInfo, Sender> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpTransactionCoordinator.class);
 
     private static final Boolean ROLLBACK_MARKER = Boolean.FALSE;
     private static final Boolean COMMIT_MARKER = Boolean.TRUE;
 
-    private final byte[] OUTBOUND_BUFFER = new byte[64];
+    private final Queue<OperationContext> blocked = new ArrayDeque<>(2);
 
-    private final AmqpTransferTagGenerator tagGenerator = new AmqpTransferTagGenerator();
+    public AmqpTransactionCoordinator(AmqpTransactionContext context, JmsSessionInfo resourceInfo, Sender sender) {
+        super(context.getProvider(), resourceInfo, sender);
 
-    public AmqpTransactionCoordinator(JmsSessionInfo resourceInfo, Sender endpoint, AmqpResourceParent parent) {
-        super(resourceInfo, endpoint, parent);
+        // Use a tag generator that will reuse old tags.  Later we might make this configurable.
+        sender.setDeliveryTagGenerator(ProtonDeliveryTagGenerator.BUILTIN.POOLED.createGenerator());
+
+        sender.creditStateUpdateHandler(this::handleLinkCreditUpdate)
+              .deliveryStateUpdatedHandler(this::handleDeliveryUpdated);
     }
 
-    @Override
-    public void processDeliveryUpdates(AmqpProvider provider, Delivery delivery) throws ProviderException {
+    protected void handleLinkCreditUpdate(Sender sender) {
+        if (!blocked.isEmpty() && getEndpoint().isSendable()) {
+            while (getEndpoint().getCredit() > 0 && !blocked.isEmpty()) {
+                LOG.trace("Dispatching previously held TXN operation");
+                OperationContext held = blocked.poll();
+                dispatch(held);
+            }
+        }
 
-        try {
-            if (delivery != null && delivery.remotelySettled()) {
-                DeliveryState state = delivery.getRemoteState();
+        if (blocked.isEmpty() && getEndpoint().isDraining()) {
+            getEndpoint().drained();
+        }
+    }
 
-                if (delivery.getContext() == null || !(delivery.getContext() instanceof OperationContext)) {
-                    return;
-                }
+    protected void handleDeliveryUpdated(OutgoingDelivery delivery) {
+        if (delivery != null && delivery.isRemotelySettled()) {
+            DeliveryState state = delivery.getRemoteState();
 
-                OperationContext context = (OperationContext) delivery.getContext();
-
-                AsyncResult pendingRequest = context.getRequest();
-                JmsTransactionId txId = context.getTransactionId();
-
-                if (state instanceof Declared) {
-                    LOG.debug("New TX started: {}", txId);
-                    Declared declared = (Declared) state;
-                    txId.setProviderHint(declared.getTxnId());
-                    pendingRequest.onSuccess();
-                } else if (state instanceof Rejected) {
-                    LOG.debug("Last TX request failed: {}", txId);
-                    Rejected rejected = (Rejected) state;
-                    ProviderException cause = AmqpSupport.convertToNonFatalException(getParent().getProvider(), getEndpoint(), rejected.getError());
-                    if (COMMIT_MARKER.equals(txId.getProviderContext()) && !(cause instanceof ProviderTransactionRolledBackException)){
-                        cause = new ProviderTransactionRolledBackException(cause.getMessage(), cause);
-                    } else {
-                        cause = new ProviderTransactionInDoubtException(cause.getMessage(), cause);
-                    }
-
-                    txId.setProviderHint(null);
-                    pendingRequest.onFailure(cause);
-                } else {
-                    LOG.debug("Last TX request succeeded: {}", txId);
-                    pendingRequest.onSuccess();
-                }
-
-                // Reset state for next TX action.
-                delivery.settle();
-                pendingRequest = null;
-
-                if (context.getTimeout() != null) {
-                    context.getTimeout().cancel(false);
-                }
+            if (delivery.getLinkedResource(OperationContext.class) == null) {
+                return;
             }
 
-            super.processDeliveryUpdates(provider, delivery);
-        } catch (Throwable e) {
-            throw ProviderExceptionSupport.createNonFatalOrPassthrough(e);
+            OperationContext context = (OperationContext) delivery.getLinkedResource();
+
+            AsyncResult pendingRequest = context.getRequest();
+            JmsTransactionId txId = context.getTransactionId();
+
+            if (state instanceof Declared) {
+                LOG.debug("New TX started: {}", txId);
+                Declared declared = (Declared) state;
+                txId.setProviderHint(declared.getTxnId());
+                pendingRequest.onSuccess();
+            } else if (state instanceof Rejected) {
+                LOG.debug("Last TX request failed: {}", txId);
+                Rejected rejected = (Rejected) state;
+                ProviderException cause = AmqpSupport.convertToNonFatalException(getProvider(), rejected.getError());
+                if (COMMIT_MARKER.equals(txId.getProviderContext()) && !(cause instanceof ProviderTransactionRolledBackException)){
+                    cause = new ProviderTransactionRolledBackException(cause.getMessage(), cause);
+                } else {
+                    cause = new ProviderTransactionInDoubtException(cause.getMessage(), cause);
+                }
+
+                txId.setProviderHint(null);
+                pendingRequest.onFailure(cause);
+            } else {
+                LOG.debug("Last TX request succeeded: {}", txId);
+                pendingRequest.onSuccess();
+            }
+
+            // Reset state for next TX action.
+            delivery.settle();
+            pendingRequest = null;
+
+            if (context.getTimeout() != null) {
+                context.getTimeout().cancel(false);
+            }
         }
     }
 
     public void declare(JmsTransactionId txId, AsyncResult request) throws ProviderException {
-
         if (isClosed()) {
             request.onFailure(new ProviderIllegalStateException("Cannot start new transaction: Coordinator remotely closed"));
             return;
@@ -126,21 +137,17 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
             throw new ProviderIllegalStateException("Declar called while a TX is still Active.");
         }
 
-        Message message = Message.Factory.create();
-        Declare declare = new Declare();
-        message.setBody(new AmqpValue(declare));
-
         ScheduledFuture<?> timeout = scheduleTimeoutIfNeeded("Timed out waiting for declare of TX.", request);
-        OperationContext context = new OperationContext(txId, request, timeout);
+        OperationContext context = new OperationContext(Operation.DECLARE, txId, request, timeout);
 
-        Delivery delivery = getEndpoint().delivery(tagGenerator.getNextTag());
-        delivery.setContext(context);
-
-        sendTxCommand(message);
+        if (getEndpoint().isSendable()) {
+            dispatch(context);
+        } else {
+            blocked.offer(context);
+        }
     }
 
     public void discharge(JmsTransactionId txId, DischargeCompletion request) throws ProviderException {
-
         if (isClosed()) {
             ProviderException failureCause = null;
 
@@ -161,65 +168,98 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
         // Store the context of this action in the transaction ID for later completion.
         txId.setProviderContext(request.isCommit() ? COMMIT_MARKER : ROLLBACK_MARKER);
 
-        Message message = Message.Factory.create();
-        Discharge discharge = new Discharge();
-        discharge.setFail(!request.isCommit());
-        discharge.setTxnId((Binary) txId.getProviderHint());
-        message.setBody(new AmqpValue(discharge));
-
         ScheduledFuture<?> timeout = scheduleTimeoutIfNeeded("Timed out waiting for discharge of TX.", request);
-        OperationContext context = new OperationContext(txId, request, timeout);
+        OperationContext context = new OperationContext(Operation.DISCHARGE, txId, request, timeout);
 
-        Delivery delivery = getEndpoint().delivery(tagGenerator.getNextTag());
-        delivery.setContext(context);
+        if (getEndpoint().isSendable()) {
+            dispatch(context);
+        } else {
+            blocked.offer(context);
+        }
+    }
 
-        sendTxCommand(message);
+    private void dispatch(OperationContext context) {
+        final OutgoingDelivery delivery = getEndpoint().next();
+        final Section<?> body;
+
+        if (context.operation == Operation.DECLARE) {
+            body = new AmqpValue<Declare>(new Declare());
+        } else {
+            Discharge discharge = new Discharge();
+            DischargeCompletion completion = (DischargeCompletion) context.getRequest();
+            discharge.setFail(!completion.isCommit());
+            discharge.setTxnId((Binary) context.getTransactionId().getProviderHint());
+
+            body = new AmqpValue<Discharge>(discharge);
+        }
+
+        delivery.setLinkedResource(context);
+        delivery.writeBytes(AmqpCodec.encode(body));
     }
 
     //----- Base class overrides ---------------------------------------------//
 
     @Override
-    public void closeResource(AmqpProvider provider, ProviderException cause, boolean localClose) {
-
+    protected void processEndpointClosed() {
         // Alert any pending operation that the link failed to complete the pending
         // begin / commit / rollback operation.
-        Delivery pending = getEndpoint().head();
-        while (pending != null) {
-            Delivery nextPending = pending.next();
-            if (pending.getContext() != null && pending.getContext() instanceof OperationContext) {
-                OperationContext context = (OperationContext) pending.getContext();
-                context.request.onFailure(cause);
-            }
 
-            pending = nextPending;
+        // Producer might be awaiting a close in which case we won't signal failure to the close
+        // caller but we should use the most appropriate error for failing the sends so we need
+        // to check here if there a remote error and use that or create a descriptive error.
+        final ProviderException error;
+        if (getFailureCause() != null) {
+            error = getFailureCause();
+        } else if (hasRemoteError()) {
+            error = createEndpointRemotelyClosedException();
+        } else {
+            error = new ProviderException("TXN Coordinator closed remotely before operation outcome could be determined");
         }
 
+        getEndpoint().unsettled().forEach(delivery -> {
+            try {
+                OperationContext context = delivery.getLinkedResource(OperationContext.class);
+                context.request.onFailure(error);
+            } catch (Exception ex) {
+                LOG.debug("Caught unexpected error while cancelling inflight TX Operations", ex);
+            }
+        });
+
+        for (OperationContext operation : blocked) {
+            try {
+                operation.getRequest().onFailure(error);
+            } catch (Exception e) {
+                LOG.debug("Caught exception when failing blocked TXN operation during remote closure: {}", operation, e);
+            }
+        }
+    }
+
+    @Override
+    protected void signalEndpointRemotelyClosed() {
         // Override the base class version because we do not want to propagate
         // an error up to the client if remote close happens as that is an
         // acceptable way for the remote to indicate the discharge could not
         // be applied.
-
-        if (getParent() != null) {
-            getParent().removeChildResource(this);
-        }
-
-        if (getEndpoint() != null) {
-            getEndpoint().close();
-            getEndpoint().free();
-        }
 
         LOG.debug("Transaction Coordinator link {} was remotely closed", getResourceInfo());
     }
 
     //----- Internal implementation ------------------------------------------//
 
+    private enum Operation {
+        DECLARE,
+        DISCHARGE
+    }
+
     private class OperationContext {
 
+        private final Operation operation;
         private final AsyncResult request;
         private final ScheduledFuture<?> timeout;
         private final JmsTransactionId transactionId;
 
-        public OperationContext(JmsTransactionId transactionId, AsyncResult request, ScheduledFuture<?> timeout) {
+        public OperationContext(Operation operation, JmsTransactionId transactionId, AsyncResult request, ScheduledFuture<?> timeout) {
+            this.operation = operation;
             this.transactionId = transactionId;
             this.request = request;
             this.timeout = timeout;
@@ -239,28 +279,11 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
     }
 
     private ScheduledFuture<?> scheduleTimeoutIfNeeded(String cause, AsyncResult pendingRequest) {
-        AmqpProvider provider = getParent().getProvider();
+        AmqpProvider provider = getProvider();
         if (provider.getRequestTimeout() != JmsConnectionInfo.INFINITE) {
             return provider.scheduleRequestTimeout(pendingRequest, provider.getRequestTimeout(), new ProviderOperationTimedOutException(cause));
         } else {
             return null;
         }
-    }
-
-    private void sendTxCommand(Message message) throws ProviderException {
-        int encodedSize = 0;
-        byte[] buffer = OUTBOUND_BUFFER;
-        while (true) {
-            try {
-                encodedSize = message.encode(buffer, 0, buffer.length);
-                break;
-            } catch (BufferOverflowException e) {
-                buffer = new byte[buffer.length * 2];
-            }
-        }
-
-        Sender sender = getEndpoint();
-        sender.send(buffer, 0, encodedSize);
-        sender.advance();
     }
 }

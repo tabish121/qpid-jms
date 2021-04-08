@@ -380,7 +380,7 @@ public class JMSConsumerIntegrationTest extends QpidJmsTestCase {
             Queue queue = context.createQueue("myQueue");
 
             PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
+            properties.setContentType(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
 
             String expectedContent = "expectedContent";
 
@@ -424,7 +424,7 @@ public class JMSConsumerIntegrationTest extends QpidJmsTestCase {
             Queue queue = context.createQueue("myQueue");
 
             PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE);
+            properties.setContentType(OCTET_STREAM_CONTENT_TYPE);
 
             MessageAnnotationsDescribedType msgAnnotations = null;
             msgAnnotations = new MessageAnnotationsDescribedType();
@@ -571,7 +571,7 @@ public class JMSConsumerIntegrationTest extends QpidJmsTestCase {
             Queue queue = context.createQueue("myQueue");
 
             PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE);
+            properties.setContentType(OCTET_STREAM_CONTENT_TYPE);
 
             MessageAnnotationsDescribedType msgAnnotations = null;
             msgAnnotations = new MessageAnnotationsDescribedType();

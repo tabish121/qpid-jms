@@ -51,6 +51,7 @@ public class NoAckSessionIntegrationTest extends QpidJmsTestCase {
 
     private final IntegrationTestFixture testFixture = new IntegrationTestFixture();
 
+    @Test(timeout = 20_000)
     public void testNoAckSessionDoesNotPresettleProducers() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
             Connection connection = testFixture.establishConnecton(testPeer);

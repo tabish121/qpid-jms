@@ -33,13 +33,12 @@ import java.util.List;
 
 import javax.jms.MessageEOFException;
 
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Section;
-import org.apache.qpid.proton.message.Message;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Section;
 import org.junit.Test;
 
 public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
@@ -64,7 +63,7 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
     public void testNewMessageToSendContainsAmqpSequenceBody() throws Exception {
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createNewStreamMessageFacade();
 
-        Section body = amqpStreamMessageFacade.getBody();
+        Section<?> body = amqpStreamMessageFacade.getBody();
 
         assertNotNull("Body section was not present", body);
         assertTrue("Body section was not of expected type: " + body.getClass(), body instanceof AmqpSequence);
@@ -84,10 +83,10 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testPeekUsingReceivedMessageWithAmqpValueBodyReturnsExpectedValue() throws Exception {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         List<Object> list = new ArrayList<Object>();
         list.add(Boolean.FALSE);
-        message.setBody(new AmqpValue(list));
+        message.body(new AmqpValue<>(list));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -96,10 +95,10 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testPeekUsingReceivedMessageWithAmqpSequenceBodyReturnsExpectedValue() throws Exception {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         List<Object> list = new ArrayList<Object>();
         list.add(Boolean.FALSE);
-        message.setBody(new AmqpSequence(list));
+        message.body(new AmqpSequence<>(list));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -108,11 +107,11 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testRepeatedPeekReturnsExpectedValue() throws Exception {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         List<Object> list = new ArrayList<Object>();
         list.add(Boolean.FALSE);
         list.add(Boolean.TRUE);
-        message.setBody(new AmqpSequence(list));
+        message.body(new AmqpSequence<>(list));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -123,11 +122,11 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testRepeatedPeekAfterPopReturnsExpectedValue() throws Exception {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         List<Object> list = new ArrayList<Object>();
         list.add(Boolean.FALSE);
         list.add(Boolean.TRUE);
-        message.setBody(new AmqpSequence(list));
+        message.body(new AmqpSequence<>(list));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -138,11 +137,11 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testResetPositionAfterPop() throws Exception {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         List<Object> list = new ArrayList<Object>();
         list.add(Boolean.FALSE);
         list.add(Boolean.TRUE);
-        message.setBody(new AmqpSequence(list));
+        message.body(new AmqpSequence<>(list));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -160,11 +159,11 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testResetPositionAfterPeekThrowsMEOFE() throws Exception {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         List<Object> list = new ArrayList<Object>();
         list.add(Boolean.FALSE);
         list.add(Boolean.TRUE);
-        message.setBody(new AmqpSequence(list));
+        message.body(new AmqpSequence<>(list));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -236,10 +235,10 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testPopFullyReadListThrowsMEOFE() throws Exception {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         List<Object> list = new ArrayList<Object>();
         list.add(Boolean.FALSE);
-        message.setBody(new AmqpSequence(list));
+        message.body(new AmqpSequence<>(list));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -256,8 +255,8 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testCreateWithUnexpectedBodySectionTypeThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(new byte[0])));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(new byte[0])));
 
         try {
             createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
@@ -269,8 +268,8 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
 
     @Test
     public void testCreateWithAmqpValueBodySectionContainingUnexpectedValueThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue("not-a-list"));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<String>("not-a-list"));
 
         try {
             createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
@@ -281,10 +280,9 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
     }
 
     @Test
-    public void testCreateWithEmptyAmqpValueBodySection() throws Exception
-    {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(null));
+    public void testCreateWithEmptyAmqpValueBodySection() throws Exception {
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<>(null));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -294,10 +292,9 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
     }
 
     @Test
-    public void testCreateWithEmptyAmqpSequenceBodySection() throws Exception
-    {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpSequence(null));
+    public void testCreateWithEmptyAmqpSequenceBodySection() throws Exception {
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpSequence<>(null));
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 
@@ -307,10 +304,9 @@ public class AmqpJmsStreamMessageFacadeTest extends AmqpJmsMessageTypesTestCase 
     }
 
     @Test
-    public void testCreateWithNoBodySection() throws Exception
-    {
-        Message message = Message.Factory.create();
-        message.setBody(null);
+    public void testCreateWithNoBodySection() throws Exception {
+        final AmqpMessage message = new AmqpMessage();
+        message.body(null);
 
         AmqpJmsStreamMessageFacade amqpStreamMessageFacade = createReceivedStreamMessageFacade(createMockAmqpConsumer(), message);
 

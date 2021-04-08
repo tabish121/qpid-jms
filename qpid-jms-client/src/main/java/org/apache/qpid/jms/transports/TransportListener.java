@@ -16,7 +16,7 @@
  */
 package org.apache.qpid.jms.transports;
 
-import io.netty.buffer.ByteBuf;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 
 /**
  * Listener interface that should be implemented by users of the various
@@ -30,7 +30,7 @@ public interface TransportListener {
      * @param incoming
      *        the next incoming packet of data.
      */
-    void onData(ByteBuf incoming);
+    void onData(ProtonBuffer incoming);
 
     /**
      * Called if the connection state becomes closed.

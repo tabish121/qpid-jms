@@ -40,28 +40,29 @@ import org.apache.qpid.jms.message.facade.JmsMessageFacade;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
 import org.apache.qpid.jms.tracing.JmsTracer;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.UnsignedInteger;
-import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
-import org.apache.qpid.proton.amqp.messaging.DeliveryAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Footer;
-import org.apache.qpid.proton.amqp.messaging.Header;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Properties;
-import org.apache.qpid.proton.amqp.messaging.Section;
-
-import io.netty.buffer.ByteBuf;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.UnsignedByte;
+import org.apache.qpid.protonj2.types.UnsignedInteger;
+import org.apache.qpid.protonj2.types.messaging.ApplicationProperties;
+import org.apache.qpid.protonj2.types.messaging.DeliveryAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Footer;
+import org.apache.qpid.protonj2.types.messaging.Header;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Properties;
+import org.apache.qpid.protonj2.types.messaging.Section;
 
 public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
     private static final long UINT_MAX = 0xFFFFFFFFL;
+    private static final byte MAX_JMS_PRIORITY = 9;
 
     protected AmqpConnection connection;
 
     private Properties properties;
-    private final AmqpHeader header = new AmqpHeader();
-    private Section body;
+    private Header header = new Header();
+    private Section<?> body;
     private Map<Symbol, Object> messageAnnotationsMap;
     private Map<String, Object> applicationPropertiesMap;
     private Map<Symbol, Object> deliveryAnnotationsMap;
@@ -139,7 +140,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
      *
      * @return a Symbol value indicating the message content type.
      */
-    public Symbol getContentType() {
+    public String getContentType() {
         if (properties != null) {
             return properties.getContentType();
         }
@@ -147,7 +148,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
         return null;
     }
 
-    public void setContentType(Symbol value) {
+    public void setContentType(String value) {
         if (properties == null) {
             if (value == null) {
                 return;
@@ -229,7 +230,11 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
             ttl = producerTtl;
         }
 
-        header.setTimeToLive(ttl);
+        if (ttl > 0) {
+            header.setTimeToLive(ttl);
+        } else {
+            header.clearTimeToLive();
+        }
 
         JmsTracer tracer = connection.getResourceInfo().getTracer();
         tracer.initSend(this, getToAddress());
@@ -271,7 +276,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
             target.setReplyTo(replyTo);
         }
 
-        target.setAmqpHeader(header);
+        target.header = header;
 
         if (properties != null) {
             target.setProperties(new Properties(properties));
@@ -351,13 +356,10 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     @Override
     public long getTimestamp() {
         if (properties != null) {
-            Date timestamp = properties.getCreationTime();
-            if (timestamp != null) {
-                return timestamp.getTime();
-            }
+            return properties.getCreationTime();
+        } else {
+            return 0L;
         }
-
-        return 0L;
     }
 
     @Override
@@ -370,10 +372,10 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
             lazyCreateProperties();
         }
 
-        if (timestamp == 0) {
-            properties.setCreationTime(null);
+        if (timestamp != 0) {
+            properties.setCreationTime(timestamp);
         } else {
-            properties.setCreationTime(new Date(timestamp));
+            properties.clearCreationTime();
         }
     }
 
@@ -459,7 +461,11 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
     @Override
     public void setPersistent(boolean value) {
-        header.setDurable(value);
+        if (value) {
+            header.setDurable(value);
+        } else {
+            header.clearDurable();
+        }
     }
 
     @Override
@@ -474,7 +480,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
     @Override
     public int getRedeliveryCount() {
-        return header.getDeliveryCount();
+        return (int) header.getDeliveryCount();
     }
 
     @Override
@@ -523,12 +529,31 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
     @Override
     public int getPriority() {
-        return header.getPriority();
+        if (header.hasPriority()) {
+            if (UnsignedByte.compare(MAX_JMS_PRIORITY, header.getPriority()) < 0) {
+                return 9;
+            } else {
+                return header.getPriority();
+            }
+        }
+
+        return Header.DEFAULT_PRIORITY;
     }
 
     @Override
     public void setPriority(int priority) {
-        header.setPriority(priority);
+        if (priority == Header.DEFAULT_PRIORITY) {
+            header.clearPriority();
+        } else {
+            byte scaled = (byte) priority;
+            if (priority < 0) {
+                scaled = 0;
+            } else if (priority > 9) {
+                scaled = 9;
+            }
+
+            header.setPriority(scaled);
+        }
     }
 
     @Override
@@ -688,7 +713,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
         if (bytes == null) {
             if (properties != null) {
-                properties.setUserId(null);
+                properties.setUserId((byte[]) null);
             }
         } else {
             lazyCreateProperties();
@@ -698,7 +723,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
     @Override
     public byte[] getUserIdBytes() {
-        if(properties == null || properties.getUserId() == null) {
+        if (properties == null || properties.getUserId() == null) {
             return null;
         } else {
             final Binary userId = properties.getUserId();
@@ -712,7 +737,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     public void setUserIdBytes(byte[] userId) {
         if (userId == null || userId.length == 0) {
             if (properties != null) {
-                properties.setUserId(null);
+                properties.setUserId((byte[]) null);
             }
         } else {
             lazyCreateProperties();
@@ -746,14 +771,10 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     @Override
     public int getGroupSequence() {
         if (properties != null) {
-            UnsignedInteger groupSeqUint = properties.getGroupSequence();
-            if (groupSeqUint != null) {
-                // This wraps it into the negative int range if uint is over 2^31-1
-                return groupSeqUint.intValue();
-            }
+            return UnsignedInteger.valueOf(properties.getGroupSequence()).intValue();
+        } else {
+            return 0;
         }
-
-        return 0;
     }
 
     @Override
@@ -761,10 +782,10 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
         // This wraps it into the upper uint range if a negative was provided
         if (groupSequence != 0) {
             lazyCreateProperties();
-            properties.setGroupSequence(UnsignedInteger.valueOf(groupSequence));
+            properties.setGroupSequence(Integer.toUnsignedLong(groupSequence));
         } else {
             if (properties != null) {
-                properties.setGroupSequence(null);
+                properties.clearGroupSequence();
             }
         }
     }
@@ -909,7 +930,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     }
 
     @Override
-    public ByteBuf encodeMessage() {
+    public ProtonBuffer encodeMessage() {
         return AmqpCodec.encodeMessage(this);
     }
 
@@ -982,20 +1003,12 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
     //----- Access to AMQP Message Values ------------------------------------//
 
-    AmqpHeader getAmqpHeader() {
+    Header getHeader() {
         return header;
     }
 
-    void setAmqpHeader(AmqpHeader header) {
-        this.header.setHeader(header);
-    }
-
-    Header getHeader() {
-        return header.getHeader();
-    }
-
     void setHeader(Header header) {
-        this.header.setHeader(header);
+        this.header = header == null ? this.header : header;
     }
 
     Properties getProperties() {
@@ -1006,11 +1019,11 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
         this.properties = properties;
     }
 
-    Section getBody() {
+    Section<?> getBody() {
         return body;
     }
 
-    void setBody(Section body) {
+    void setBody(Section<?> body) {
         this.body = body;
     }
 
@@ -1066,7 +1079,6 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
         return result;
     }
 
-    @SuppressWarnings("unchecked")
     void setFooter(Footer footer) {
         if (footer != null) {
             this.footerMap = footer.getValue();
@@ -1077,11 +1089,8 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
     private Long getAbsoluteExpiryTime() {
         Long result = null;
-        if (properties != null) {
-            Date date = properties.getAbsoluteExpiryTime();
-            if (date != null) {
-                result = date.getTime();
-            }
+        if (properties != null && properties.hasAbsoluteExpiryTime()) {
+            result = properties.getAbsoluteExpiryTime();
         }
 
         return result;
@@ -1089,7 +1098,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
     private Long getTtl() {
         Long result = null;
-        if (header.nonDefaultTimeToLive()) {
+        if (header.hasTimeToLive()) {
             result = header.getTimeToLive();
         }
 
@@ -1099,11 +1108,11 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     private void setAbsoluteExpiryTime(Long expiration) {
         if (expiration == null || expiration == 0l) {
             if (properties != null) {
-                properties.setAbsoluteExpiryTime(null);
+                properties.clearAbsoluteExpiryTime();
             }
         } else {
             lazyCreateProperties();
-            properties.setAbsoluteExpiryTime(new Date(expiration));
+            properties.setAbsoluteExpiryTime(expiration.longValue());
         }
     }
 

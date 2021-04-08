@@ -27,9 +27,9 @@ import java.io.Serializable;
 import org.apache.qpid.jms.policy.JmsDeserializationPolicy;
 import org.apache.qpid.jms.util.ClassLoadingAwareObjectInputStream;
 import org.apache.qpid.jms.util.ClassLoadingAwareObjectInputStream.TrustedClassFilter;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.Section;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.Section;
 
 /**
  * Wrapper around an AMQP Message instance that will be treated as a JMS ObjectMessage
@@ -85,12 +85,12 @@ public class AmqpSerializedObjectDelegate implements AmqpObjectTypeDelegate, Tru
     public Serializable getObject() throws IOException, ClassNotFoundException {
         Binary binary = null;
 
-        Section body = parent.getBody();
+        Section<?> body = parent.getBody();
 
         if (body == null || body == NULL_OBJECT_BODY) {
             return null;
         } else if (body instanceof Data) {
-            binary = ((Data) body).getValue();
+            binary = ((Data) body).getBinary();
         } else {
             throw new IllegalStateException("Unexpected body type: " + body.getClass().getSimpleName());
         }

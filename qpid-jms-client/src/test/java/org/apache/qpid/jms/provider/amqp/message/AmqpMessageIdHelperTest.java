@@ -31,8 +31,8 @@ import java.util.UUID;
 
 import org.apache.qpid.jms.exceptions.IdConversionException;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.UnsignedLong;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.UnsignedLong;
 import org.junit.Test;
 
 public class AmqpMessageIdHelperTest extends QpidJmsTestCase {

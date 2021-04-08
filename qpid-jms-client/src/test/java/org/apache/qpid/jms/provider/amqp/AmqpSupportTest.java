@@ -28,9 +28,9 @@ import java.util.Map;
 
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.exceptions.ProviderConnectionRedirectedException;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.transport.AmqpError;
-import org.apache.qpid.proton.amqp.transport.ErrorCondition;
+import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.transport.AmqpError;
+import org.apache.qpid.protonj2.types.transport.ErrorCondition;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -38,8 +38,6 @@ public class AmqpSupportTest {
 
     @Test
     public void testCreateRedirectionException() throws URISyntaxException {
-        ErrorCondition condition = new ErrorCondition();
-
         AmqpProvider mockProvider = Mockito.mock(AmqpProvider.class);
         Mockito.when(mockProvider.getRemoteURI()).thenReturn(new URI("amqp://localhost:5672"));
 
@@ -50,10 +48,10 @@ public class AmqpSupportTest {
         info.put(AmqpSupport.SCHEME, "amqp");
         info.put(AmqpSupport.PATH, "/websocket");
 
-        condition.setInfo(info);
-
         Symbol error = AmqpError.INTERNAL_ERROR;
         String message = "Failed to connect";
+
+        ErrorCondition condition = new ErrorCondition(error, message, info);
 
         Exception result = AmqpSupport.createRedirectException(mockProvider, error, message, condition);
 
@@ -76,9 +74,10 @@ public class AmqpSupportTest {
         AmqpProvider mockProvider = Mockito.mock(AmqpProvider.class);
         Mockito.when(mockProvider.getRemoteURI()).thenReturn(new URI("amqp://localhost:5672"));
 
-        ErrorCondition condition = new ErrorCondition();
         Symbol error = AmqpError.INTERNAL_ERROR;
         String message = "Failed to connect";
+
+        ErrorCondition condition = new ErrorCondition(error, message);
 
         Exception result = AmqpSupport.createRedirectException(mockProvider, error, message, condition);
 
@@ -92,7 +91,6 @@ public class AmqpSupportTest {
         AmqpProvider mockProvider = Mockito.mock(AmqpProvider.class);
         Mockito.when(mockProvider.getRemoteURI()).thenReturn(new URI("amqp://localhost:5672"));
 
-        ErrorCondition condition = new ErrorCondition();
 
         Map<Symbol, Object> info = new HashMap<>();
         info.put(AmqpSupport.PORT, "5672");
@@ -100,10 +98,10 @@ public class AmqpSupportTest {
         info.put(AmqpSupport.SCHEME, "amqp");
         info.put(AmqpSupport.PATH, "websocket");
 
-        condition.setInfo(info);
-
         Symbol error = AmqpError.INTERNAL_ERROR;
         String message = "Failed to connect";
+
+        ErrorCondition condition = new ErrorCondition(error, message, info);
 
         Exception result = AmqpSupport.createRedirectException(mockProvider, error, message, condition);
 
@@ -117,8 +115,6 @@ public class AmqpSupportTest {
         AmqpProvider mockProvider = Mockito.mock(AmqpProvider.class);
         Mockito.when(mockProvider.getRemoteURI()).thenReturn(new URI("amqp://localhost:5672"));
 
-        ErrorCondition condition = new ErrorCondition();
-
         Map<Symbol, Object> info = new HashMap<>();
         info.put(AmqpSupport.PORT, "5672");
         info.put(AmqpSupport.NETWORK_HOST, "");
@@ -126,10 +122,10 @@ public class AmqpSupportTest {
         info.put(AmqpSupport.SCHEME, "amqp");
         info.put(AmqpSupport.PATH, "websocket");
 
-        condition.setInfo(info);
-
         Symbol error = AmqpError.INTERNAL_ERROR;
         String message = "Failed to connect";
+
+        ErrorCondition condition = new ErrorCondition(error, message, info);
 
         Exception result = AmqpSupport.createRedirectException(mockProvider, error, message, condition);
 
@@ -143,8 +139,6 @@ public class AmqpSupportTest {
         AmqpProvider mockProvider = Mockito.mock(AmqpProvider.class);
         Mockito.when(mockProvider.getRemoteURI()).thenReturn(new URI("amqp://localhost:5672"));
 
-        ErrorCondition condition = new ErrorCondition();
-
         Map<Symbol, Object> info = new HashMap<>();
         info.put(AmqpSupport.PORT, "L5672");
         info.put(AmqpSupport.OPEN_HOSTNAME, "localhost");
@@ -152,10 +146,10 @@ public class AmqpSupportTest {
         info.put(AmqpSupport.SCHEME, "amqp");
         info.put(AmqpSupport.PATH, "websocket");
 
-        condition.setInfo(info);
-
         Symbol error = AmqpError.INTERNAL_ERROR;
         String message = "Failed to connect";
+
+        ErrorCondition condition = new ErrorCondition(error, message, info);
 
         Exception result = AmqpSupport.createRedirectException(mockProvider, error, message, condition);
 

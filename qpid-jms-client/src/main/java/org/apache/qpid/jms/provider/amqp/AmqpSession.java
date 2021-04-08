@@ -16,10 +16,6 @@
  */
 package org.apache.qpid.jms.provider.amqp;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -38,22 +34,21 @@ import org.apache.qpid.jms.provider.ProviderConstants.ACK_TYPE;
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpConsumerBuilder;
 import org.apache.qpid.jms.provider.amqp.builders.AmqpProducerBuilder;
-import org.apache.qpid.proton.engine.Session;
+import org.apache.qpid.protonj2.engine.Receiver;
+import org.apache.qpid.protonj2.engine.Sender;
+import org.apache.qpid.protonj2.engine.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> implements AmqpResourceParent {
+public class AmqpSession extends AmqpAbstractEndpoint<JmsSessionInfo, Session> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpSession.class);
 
     private final AmqpConnection connection;
     private final AmqpTransactionContext txContext;
 
-    private final Map<JmsConsumerId, AmqpConsumer> consumers = new HashMap<JmsConsumerId, AmqpConsumer>();
-    private final Map<JmsProducerId, AmqpProducer> producers = new HashMap<JmsProducerId, AmqpProducer>();
-
     public AmqpSession(AmqpConnection connection, JmsSessionInfo info, Session session) {
-        super(info, session, connection);
+        super(connection.getProvider(), info, session);
 
         this.connection = connection;
 
@@ -74,10 +69,9 @@ public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> i
     public void acknowledge(final ACK_TYPE ackType) {
         // A consumer whose close was deferred will be closed and removed from the consumers
         // map so we must copy the entries to safely traverse the collection during this operation.
-        List<AmqpConsumer> consumers = new ArrayList<>(this.consumers.values());
-        for (AmqpConsumer consumer : consumers) {
-            consumer.acknowledge(ackType);
-        }
+        getEndpoint().receivers().forEach(receiver -> {
+            receiver.getLinkedResource(AmqpConsumer.class).acknowledge(ackType);
+        });
     }
 
     /**
@@ -87,29 +81,35 @@ public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> i
      * @throws Exception if an error occurs while performing the recover.
      */
     public void recover() throws Exception {
-        for (AmqpConsumer consumer : consumers.values()) {
-            consumer.recover();
-        }
+        for (Receiver receiver : getEndpoint().receivers()) {
+            receiver.getLinkedResource(AmqpConsumer.class).recover();
+        };
     }
 
     public void createProducer(JmsProducerInfo producerInfo, AsyncResult request) {
         AmqpProducerBuilder builder = new AmqpProducerBuilder(this, producerInfo);
-        builder.buildResource(request);
+        builder.buildEndpoint(request);
     }
 
     public AmqpProducer getProducer(JmsProducerInfo producerInfo) {
-        JmsProducerId producerId = producerInfo.getId();
+        final JmsProducerId producerId = producerInfo.getId();
 
         if (producerId.getProviderHint() instanceof AmqpProducer) {
             return (AmqpProducer) producerId.getProviderHint();
         }
 
-        return producers.get(producerId);
+        for (Sender sender : getEndpoint().senders()) {
+            AmqpProducer producer = sender.getLinkedResource(AmqpProducer.class);
+            if (producer.getProducerId().equals(producerId)) {
+                return producer;
+            }
+        };
+
+        throw new IllegalArgumentException("Cannot find producer in session with Id: " + producerId);
     }
 
     public void createConsumer(JmsConsumerInfo consumerInfo, AsyncResult request) {
-        AmqpConsumerBuilder builder = new AmqpConsumerBuilder(this, consumerInfo);
-        builder.buildResource(request);
+        new AmqpConsumerBuilder(this, consumerInfo).buildEndpoint(request);
     }
 
     public AmqpConsumer getConsumer(JmsConsumerInfo consumerInfo) {
@@ -119,7 +119,14 @@ public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> i
             return (AmqpConsumer) consumerId.getProviderHint();
         }
 
-        return consumers.get(consumerId);
+        for (Receiver receiver : getEndpoint().receivers()) {
+            AmqpConsumer consumer = receiver.getLinkedResource(AmqpConsumer.class);
+            if (consumer.getConsumerId().equals(consumerId)) {
+                return consumer;
+            }
+        };
+
+        throw new IllegalArgumentException("Cannot find consumer in session with Id: " + consumerId);
     }
 
     public AmqpTransactionContext getTransactionContext() {
@@ -205,44 +212,30 @@ public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> i
     }
 
     @Override
-    public void addChildResource(AmqpResource resource) {
-        // delegate to the connection if the type is not managed here.
-        if (resource instanceof AmqpConsumer) {
-            AmqpConsumer consumer = (AmqpConsumer) resource;
-            consumers.put(consumer.getConsumerId(), consumer);
-        } else if (resource instanceof AmqpProducer) {
-            AmqpProducer producer = (AmqpProducer) resource;
-            producers.put(producer.getProducerId(), producer);
-        } else {
-            connection.addChildResource(resource);
-        }
-    }
+    protected void processEndpointClosed() {
+        getEndpoint().receivers().forEach(receiver -> {
+            try {
+                if (receiver.getLinkedResource() != null) {
+                    receiver.getLinkedResource(AmqpConsumer.class).processParentEndpointClosed(this);
+                }
+            } catch (ClassCastException cse) {
+                // Unknown Consumer in the senders chain is a bit odd but could be a closed resource
+                // that has not had a remote response
+                LOG.trace("Skiped process close on unknown session receiver: " + receiver);
+            }
+        });
 
-    @Override
-    public void removeChildResource(AmqpResource resource) {
-        // delegate to the connection if the type is not managed here.
-        if (resource instanceof AmqpConsumer) {
-            AmqpConsumer consumer = (AmqpConsumer) resource;
-            consumers.remove(consumer.getConsumerId());
-        } else if (resource instanceof AmqpProducer) {
-            AmqpProducer producer = (AmqpProducer) resource;
-            producers.remove(producer.getProducerId());
-        } else {
-            connection.removeChildResource(resource);
-        }
-    }
-
-    @Override
-    public void handleResourceClosure(AmqpProvider provider, ProviderException error) {
-        List<AmqpConsumer> consumerList = new ArrayList<>(consumers.values());
-        for (AmqpConsumer consumer : consumerList) {
-            consumer.handleResourceClosure(provider, error);
-        }
-
-        List<AmqpProducer> producerList = new ArrayList<>(producers.values());
-        for (AmqpProducer producer : producerList) {
-            producer.handleResourceClosure(provider, error);
-        }
+        getEndpoint().senders().forEach(sender -> {
+            try {
+                if (sender.getLinkedResource() != null) {
+                    sender.getLinkedResource(AmqpProducer.class).processParentEndpointClosed(this);
+                }
+            } catch (ClassCastException cse) {
+                // Unknown Producer in the senders chain is a bit odd but could be a closed resource
+                // that has not had a remote response
+                LOG.trace("Skiped process close on unknown session sender: " + sender);
+            }
+        });
     }
 
     /**

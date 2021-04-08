@@ -23,10 +23,11 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.transports.TransportOptions;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonNettyByteBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -88,29 +89,29 @@ public class NettyWsTransport extends NettyTcpTransport {
     }
 
     @Override
-    public void write(ByteBuf output) throws IOException {
+    public void write(ProtonBuffer output) throws IOException {
         checkConnected();
-        int length = output.readableBytes();
+        int length = output.getReadableBytes();
         if (length == 0) {
             return;
         }
 
         LOG.trace("Attempted write of: {} bytes", length);
 
-        channel.write(new BinaryWebSocketFrame(output), channel.voidPromise());
+        channel.write(new BinaryWebSocketFrame(toOutputBuffer(output)), channel.voidPromise());
     }
 
     @Override
-    public void writeAndFlush(ByteBuf output) throws IOException {
+    public void writeAndFlush(ProtonBuffer output) throws IOException {
         checkConnected();
-        int length = output.readableBytes();
+        int length = output.getReadableBytes();
         if (length == 0) {
             return;
         }
 
         LOG.trace("Attempted write and flush of: {} bytes", length);
 
-        channel.writeAndFlush(new BinaryWebSocketFrame(output), channel.voidPromise());
+        channel.writeAndFlush(new BinaryWebSocketFrame(toOutputBuffer(output)), channel.voidPromise());
     }
 
     @Override
@@ -139,6 +140,7 @@ public class NettyWsTransport extends NettyTcpTransport {
         LOG.trace("Channel has become active, awaiting WebSocket handshake! Channel is {}", channel);
     }
 
+    @Override
     protected void handleChannelInactive(Channel channel) throws Exception {
         try {
             if (handshakeTimeoutFuture != null) {
@@ -190,7 +192,7 @@ public class NettyWsTransport extends NettyTcpTransport {
                 handshaker.finishHandshake(ch, (FullHttpResponse) message);
                 LOG.trace("WebSocket Client connected! {}", ctx.channel());
                 // Now trigger super processing as we are really connected.
-                if(handshakeTimeoutFuture.cancel(false)) {
+                if (handshakeTimeoutFuture.cancel(false)) {
                     NettyWsTransport.super.handleConnected(ch);
                 }
                 return;
@@ -212,11 +214,11 @@ public class NettyWsTransport extends NettyTcpTransport {
             } else if (frame instanceof BinaryWebSocketFrame) {
                 BinaryWebSocketFrame binaryFrame = (BinaryWebSocketFrame) frame;
                 LOG.trace("WebSocket Client received data: {} bytes", binaryFrame.content().readableBytes());
-                listener.onData(binaryFrame.content());
+                listener.onData(new ProtonNettyByteBuffer(binaryFrame.content()));
             } else if (frame instanceof ContinuationWebSocketFrame) {
                 ContinuationWebSocketFrame continuationFrame = (ContinuationWebSocketFrame) frame;
                 LOG.trace("WebSocket Client received data continuation: {} bytes", continuationFrame.content().readableBytes());
-                listener.onData(continuationFrame.content());
+                listener.onData(new ProtonNettyByteBuffer(continuationFrame.content()));
             } else if (frame instanceof PingWebSocketFrame) {
                 LOG.trace("WebSocket Client received ping, response with pong");
                 ch.write(new PongWebSocketFrame(frame.content()));

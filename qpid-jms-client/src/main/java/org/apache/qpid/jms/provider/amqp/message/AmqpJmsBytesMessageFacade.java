@@ -28,10 +28,10 @@ import javax.jms.JMSException;
 
 import org.apache.qpid.jms.message.JmsBytesMessage;
 import org.apache.qpid.jms.message.facade.JmsBytesMessageFacade;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.Section;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.Section;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -159,18 +159,18 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
      * @return the body binary, or empty substitute if there is none
      */
     private Binary getBinaryFromBody() {
-        Section body = getBody();
+        Section<?> body = getBody();
         Binary result = EMPTY_BINARY;
 
         if (body == null) {
             return result;
         } else if (body instanceof Data) {
-            Binary payload = ((Data) body).getValue();
+            Binary payload = ((Data) body).getBinary();
             if (payload != null && payload.getLength() != 0) {
                 result = payload;
             }
-        } else if(body instanceof AmqpValue) {
-            Object value = ((AmqpValue) body).getValue();
+        } else if (body instanceof AmqpValue) {
+            Object value = ((AmqpValue<?>) body).getValue();
             if (value == null) {
                 return result;
             }

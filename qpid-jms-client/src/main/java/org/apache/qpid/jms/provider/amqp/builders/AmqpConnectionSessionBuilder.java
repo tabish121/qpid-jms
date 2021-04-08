@@ -20,19 +20,21 @@ import org.apache.qpid.jms.meta.JmsSessionInfo;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
 import org.apache.qpid.jms.provider.amqp.AmqpConnectionSession;
 import org.apache.qpid.jms.provider.amqp.AmqpSession;
-import org.apache.qpid.proton.engine.Session;
+import org.apache.qpid.protonj2.engine.Session;
 
 /**
- * Resource builder responsible for creating and opening an AmqpConnectionSession instance.
+ * Overrides the default {@link AmqpSessionBuilder} to create the specialized type
+ * {@link AmqpConnectionSession} used by an {@link AmqpConnection} for connection
+ * specific behaviors.
  */
 public class AmqpConnectionSessionBuilder extends AmqpSessionBuilder {
 
-    public AmqpConnectionSessionBuilder(AmqpConnection parent, JmsSessionInfo resourceInfo) {
-        super(parent, resourceInfo);
+    public AmqpConnectionSessionBuilder(AmqpConnection connection, JmsSessionInfo resourceInfo) {
+        super(connection, resourceInfo);
     }
 
     @Override
-    protected AmqpSession createResource(AmqpConnection parent, JmsSessionInfo resourceInfo, Session endpoint) {
-        return new AmqpConnectionSession(parent, resourceInfo, endpoint);
+    protected AmqpSession createResource(AmqpConnection connection, JmsSessionInfo resourceInfo, Session session) {
+        return new AmqpConnectionSession(connection, resourceInfo, session);
     }
 }

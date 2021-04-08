@@ -30,11 +30,10 @@ import java.util.ArrayList;
 import javax.jms.JMSException;
 
 import org.apache.qpid.jms.test.testpeer.describedtypes.sections.DataDescribedType;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.message.Message;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.Data;
 import org.junit.Test;
 
 /**
@@ -86,6 +85,7 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
         assertEquals("SomeTextForMe", copy.getText());
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     public void testSetGetTextWithNewMessageToSend() throws Exception {
         String text = "myTestText";
@@ -94,7 +94,7 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
         amqpTextMessageFacade.setText(text);
         assertNotNull(amqpTextMessageFacade.getBody());
         assertTrue(amqpTextMessageFacade.getBody() instanceof AmqpValue);
-        assertEquals(text, ((AmqpValue) amqpTextMessageFacade.getBody()).getValue());
+        assertEquals(text, ((AmqpValue<String>) amqpTextMessageFacade.getBody()).getValue());
 
         assertEquals(text, amqpTextMessageFacade.getText());
     }
@@ -103,8 +103,8 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testCreateWithEmptyAmqpValue() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(null));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<String>(null));
 
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
@@ -116,8 +116,8 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testCreateWithNonEmptyAmqpValue() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue("TEST"));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<String>("TEST"));
 
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
@@ -131,7 +131,7 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetTextUsingReceivedMessageWithNoBodySectionReturnsNull() throws Exception {
-        Message message = Message.Factory.create();
+        final AmqpMessage message = new AmqpMessage();
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
         assertNull("expected null string", amqpTextMessageFacade.getText());
@@ -139,8 +139,8 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetTextUsingReceivedMessageWithAmqpValueSectionContainingNull() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(null));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<String>(null));
 
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
@@ -149,8 +149,8 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetTextUsingReceivedMessageWithDataSectionContainingNothingReturnsEmptyString() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new Data(null));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new Data((Binary) null));
 
         // This shouldn't happen with actual received messages, since Data sections can't really
         // have a null value in them, they would have an empty byte array, but just in case...
@@ -162,12 +162,10 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     @Test
     public void testGetTextUsingReceivedMessageWithZeroLengthDataSectionReturnsEmptyString() throws Exception {
         org.apache.qpid.proton.codec.Data payloadData = org.apache.qpid.proton.codec.Data.Factory.create();
-        payloadData.putDescribedType(new DataDescribedType(new Binary(new byte[0])));
-        Binary b = payloadData.encode();
+        payloadData.putDescribedType(new DataDescribedType(new org.apache.qpid.proton.amqp.Binary(new byte[0])));
+        org.apache.qpid.proton.amqp.Binary b = payloadData.encode();
 
-        Message message = Message.Factory.create();
-        int decoded = message.decode(b.getArray(), b.getArrayOffset(), b.getLength());
-        assertEquals(decoded, b.getLength());
+        final AmqpMessage message = AmqpMessage.decode(b.getArray(), b.getArrayOffset(), b.getLength());
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
         assertEquals("expected zero-length string", "", amqpTextMessageFacade.getText());
@@ -179,12 +177,10 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
         byte[] encodedBytes = encodedString.getBytes(Charset.forName("UTF-8"));
 
         org.apache.qpid.proton.codec.Data payloadData = org.apache.qpid.proton.codec.Data.Factory.create();
-        payloadData.putDescribedType(new DataDescribedType(new Binary(encodedBytes)));
-        Binary b = payloadData.encode();
+        payloadData.putDescribedType(new DataDescribedType(new org.apache.qpid.proton.amqp.Binary(encodedBytes)));
+        org.apache.qpid.proton.amqp.Binary b = payloadData.encode();
 
-        Message message = Message.Factory.create();
-        int decoded = message.decode(b.getArray(), b.getArrayOffset(), b.getLength());
-        assertEquals(decoded, b.getLength());
+        final AmqpMessage message = AmqpMessage.decode(b.getArray(), b.getArrayOffset(), b.getLength());
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
         assertEquals(encodedString, amqpTextMessageFacade.getText());
@@ -192,16 +188,16 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetTextWithNonAmqpValueOrDataSectionReportsNoBody() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpSequence(new ArrayList<Object>()));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpSequence<>(new ArrayList<Object>()));
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
         assertFalse(amqpTextMessageFacade.hasBody());
     }
 
     @Test
     public void testGetTextWithNonAmqpValueOrDataSectionThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpSequence(new ArrayList<Object>()));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpSequence<>(new ArrayList<Object>()));
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
         try {
@@ -214,8 +210,8 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
 
     @Test
     public void testGetTextWithAmqpValueContainingNonNullNonStringValueThrowsISE() throws Exception {
-        Message message = Message.Factory.create();
-        message.setBody(new AmqpValue(true));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new AmqpValue<>(true));
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
         try {
@@ -231,8 +227,8 @@ public class AmqpJmsTextMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
         String encodedString = "myEncodedString";
         byte[] encodedBytes = encodedString.getBytes(Charset.forName("UTF-16"));
 
-        Message message = Message.Factory.create();
-        message.setBody(new Data(new Binary(encodedBytes)));
+        final AmqpMessage message = new AmqpMessage();
+        message.body(new Data(new Binary(encodedBytes)));
         AmqpJmsTextMessageFacade amqpTextMessageFacade = createReceivedTextMessageFacade(createMockAmqpConsumer(), message);
 
         try {

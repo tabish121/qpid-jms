@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import javax.jms.Session;
 
@@ -35,30 +36,41 @@ import org.apache.qpid.jms.meta.JmsSessionInfo;
 import org.apache.qpid.jms.provider.AsyncResult;
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
+import org.apache.qpid.jms.provider.amqp.AmqpConnectionProperties;
+import org.apache.qpid.jms.provider.amqp.AmqpConnectionSession;
 import org.apache.qpid.jms.provider.amqp.AmqpProvider;
 import org.apache.qpid.jms.provider.amqp.AmqpRedirect;
 import org.apache.qpid.jms.provider.amqp.AmqpSupport;
 import org.apache.qpid.jms.provider.exceptions.ProviderConnectionRemotelyClosedException;
 import org.apache.qpid.jms.util.MetaDataSupport;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.engine.Connection;
+import org.apache.qpid.protonj2.engine.Connection;
+import org.apache.qpid.protonj2.types.Symbol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Resource builder responsible for creating and opening an AmqpConnection instance.
+ * AMQP {@link Connection} builder implementation.
  */
-public class AmqpConnectionBuilder extends AmqpResourceBuilder<AmqpConnection, AmqpProvider, JmsConnectionInfo, Connection> {
+public class AmqpConnectionBuilder extends AmqpEndpointBuilder<AmqpConnection, AmqpProvider, JmsConnectionInfo, Connection> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpConnectionBuilder.class);
 
-    public AmqpConnectionBuilder(AmqpProvider parent, JmsConnectionInfo resourceInfo) {
-        super(parent, resourceInfo);
+    private final AmqpConnectionProperties properties;
+
+    public AmqpConnectionBuilder(AmqpProvider provider, JmsConnectionInfo resourceInfo) {
+        super(provider, provider, resourceInfo);
+
+        this.properties = new AmqpConnectionProperties(getResourceInfo(), provider);
     }
 
     @Override
-    public void buildResource(final AsyncResult request) {
-        super.buildResource(createRequestIntercepter(request));
+    public void buildEndpoint(final AsyncResult request) {
+        super.buildEndpoint(createRequestIntercepter(request));
+    }
+
+    @Override
+    public void buildEndpoint(final AsyncResult request, Consumer<AmqpConnection> consumer) {
+        super.buildEndpoint(createRequestIntercepter(request), consumer);
     }
 
     protected AsyncResult createRequestIntercepter(final AsyncResult request) {
@@ -71,17 +83,20 @@ public class AmqpConnectionBuilder extends AmqpResourceBuilder<AmqpConnection, A
                 JmsSessionInfo sessionInfo = new JmsSessionInfo(getResourceInfo(), -1);
                 sessionInfo.setAcknowledgementMode(Session.AUTO_ACKNOWLEDGE);
 
-                final AmqpConnectionSessionBuilder builder = new AmqpConnectionSessionBuilder(getResource(), sessionInfo);
-                builder.buildResource(new AsyncResult() {
+                final AmqpConnection connection = getEndpoint().getLinkedResource(AmqpConnection.class);
+
+                final AmqpConnectionSessionBuilder builder = new AmqpConnectionSessionBuilder(connection, sessionInfo);
+
+                builder.buildEndpoint(new AsyncResult() {
 
                     @Override
                     public boolean isComplete() {
-                        return builder.getResource().isOpen();
+                        return builder.getEndpoint().isRemotelyOpen();
                     }
 
                     @Override
                     public void onSuccess() {
-                        LOG.debug("{} is now open: ", getResource());
+                        LOG.debug("Connection Session {} is now open: ", getEndpoint());
                         request.onSuccess();
                     }
 
@@ -90,7 +105,8 @@ public class AmqpConnectionBuilder extends AmqpResourceBuilder<AmqpConnection, A
                         LOG.debug("AMQP Connection Session failed to open.");
                         request.onFailure(result);
                     }
-                });
+
+                }, session -> connection.setConnectionSession((AmqpConnectionSession) session));
             }
 
             @Override
@@ -100,12 +116,11 @@ public class AmqpConnectionBuilder extends AmqpResourceBuilder<AmqpConnection, A
 
             @Override
             public boolean isComplete() {
-                return getResource().isOpen();
+                return getEndpoint().isRemotelyOpen();
             }
         };
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     protected Connection createEndpoint(JmsConnectionInfo resourceInfo) {
         String hostname = getParent().getVhost();
@@ -118,6 +133,7 @@ public class AmqpConnectionBuilder extends AmqpResourceBuilder<AmqpConnection, A
         final Map<Symbol, Object> props = new LinkedHashMap<Symbol, Object>();
 
         if (resourceInfo.getExtensionMap().containsKey(JmsConnectionExtensions.AMQP_OPEN_PROPERTIES)) {
+            @SuppressWarnings("unchecked")
             final Map<String, Object> userConnectionProperties = (Map<String, Object>) resourceInfo.getExtensionMap().get(
                 JmsConnectionExtensions.AMQP_OPEN_PROPERTIES).apply(resourceInfo.getConnection(), parent.getTransport().getRemoteLocation());
             if (userConnectionProperties != null && !userConnectionProperties.isEmpty()) {
@@ -132,27 +148,21 @@ public class AmqpConnectionBuilder extends AmqpResourceBuilder<AmqpConnection, A
 
         Connection connection = getParent().getProtonConnection();
         connection.setHostname(hostname);
-        connection.setContainer(resourceInfo.getClientId());
-        connection.setDesiredCapabilities(new Symbol[] { SOLE_CONNECTION_CAPABILITY, DELAYED_DELIVERY, ANONYMOUS_RELAY, SHARED_SUBS});
+        connection.setContainerId(resourceInfo.getClientId());
+        connection.setDesiredCapabilities(SOLE_CONNECTION_CAPABILITY, DELAYED_DELIVERY, ANONYMOUS_RELAY, SHARED_SUBS);
         connection.setProperties(props);
 
         return connection;
     }
 
     @Override
-    protected AmqpConnection createResource(AmqpProvider parent, JmsConnectionInfo resourceInfo, Connection endpoint) {
-        return new AmqpConnection(parent, resourceInfo, endpoint);
-    }
-
-    @Override
-    protected void afterOpened() {
+    protected void processEndpointRemotelyOpened(Connection connection, JmsConnectionInfo info) {
         // Initialize the connection properties so that the state of the remote can
         // be determined, this allows us to check for close pending.
-        getResource().getProperties().initialize(
-            getEndpoint().getRemoteOfferedCapabilities(), getEndpoint().getRemoteProperties());
+        properties.initialize(connection.getRemoteOfferedCapabilities(), connection.getRemoteProperties());
 
         // If there are failover servers in the open then we signal that to the listeners
-        List<AmqpRedirect> failoverList = getResource().getProperties().getFailoverServerList();
+        List<AmqpRedirect> failoverList = properties.getFailoverServerList();
         if (!failoverList.isEmpty()) {
             List<URI> failoverURIs = new ArrayList<>();
             for (AmqpRedirect redirect : failoverList) {
@@ -166,8 +176,13 @@ public class AmqpConnectionBuilder extends AmqpResourceBuilder<AmqpConnection, A
     }
 
     @Override
+    protected AmqpConnection createResource(AmqpProvider parent, JmsConnectionInfo resourceInfo, Connection endpoint) {
+        return new AmqpConnection(parent, properties, resourceInfo, endpoint);
+    }
+
+    @Override
     protected ProviderException getOpenAbortExceptionFromRemote() {
-        return AmqpSupport.convertToConnectionClosedException(parent.getProvider(), getEndpoint(), getEndpoint().getRemoteCondition());
+        return AmqpSupport.convertToConnectionClosedException(getProvider(), getEndpoint().getRemoteCondition());
     }
 
     @Override
@@ -177,11 +192,11 @@ public class AmqpConnectionBuilder extends AmqpResourceBuilder<AmqpConnection, A
 
     @Override
     protected boolean isClosePending() {
-        return getResource().getProperties().isConnectionOpenFailed();
+        return properties.isConnectionOpenFailed();
     }
 
     @Override
-    protected long getRequestTimeout() {
-        return getParent().getProvider().getConnectTimeout();
+    protected long getOpenTimeout() {
+        return getProvider().getConnectTimeout();
     }
 }

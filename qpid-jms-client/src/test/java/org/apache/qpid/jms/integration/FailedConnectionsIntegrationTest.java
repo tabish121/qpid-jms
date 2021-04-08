@@ -16,9 +16,6 @@
  */
 package org.apache.qpid.jms.integration;
 
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.NETWORK_HOST;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.OPEN_HOSTNAME;
-import static org.apache.qpid.jms.provider.amqp.AmqpSupport.PORT;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -37,7 +34,6 @@ import javax.jms.JMSException;
 
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.apache.qpid.jms.JmsOperationTimedOutException;
-import org.apache.qpid.jms.provider.amqp.AmqpSupport;
 import org.apache.qpid.jms.provider.exceptions.ProviderConnectionRedirectedException;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.testpeer.TestAmqpPeer;
@@ -118,9 +114,9 @@ public class FailedConnectionsIntegrationTest extends QpidJmsTestCase {
             final String remoteURI = "amqp://localhost:" + testPeer.getServerPort();
 
             Map<Symbol, Object> errorInfo = new HashMap<Symbol, Object>();
-            errorInfo.put(AmqpSupport.INVALID_FIELD, AmqpSupport.CONTAINER_ID);
+            errorInfo.put(INVALID_FIELD_KEY, CONTAINER_ID);
 
-            testPeer.rejectConnect(AmqpError.INVALID_FIELD, "Client ID already in use", errorInfo);
+            testPeer.rejectConnect(INVALID_FIELD, "Client ID already in use", errorInfo);
 
             Connection connection = null;
             try {
@@ -147,9 +143,9 @@ public class FailedConnectionsIntegrationTest extends QpidJmsTestCase {
             final String remoteURI = "amqp://localhost:" + testPeer.getServerPort();
 
             Map<Symbol, Object> errorInfo = new HashMap<Symbol, Object>();
-            errorInfo.put(AmqpSupport.INVALID_FIELD, AmqpSupport.CONTAINER_ID);
+            errorInfo.put(INVALID_FIELD_KEY, CONTAINER_ID);
 
-            testPeer.rejectConnect(AmqpError.INVALID_FIELD, "Client ID already in use", errorInfo);
+            testPeer.rejectConnect(INVALID_FIELD, "Client ID already in use", errorInfo);
 
             Connection connection = null;
             try {

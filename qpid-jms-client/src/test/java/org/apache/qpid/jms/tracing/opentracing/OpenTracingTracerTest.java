@@ -70,6 +70,7 @@ public class OpenTracingTracerTest extends QpidJmsTestCase {
     private ArgumentCaptor<Map<String, String>> annotationMapCaptor;
     private AutoCloseable closable;
 
+    @Override
     @Before
     public void setUp() {
         closable = MockitoAnnotations.openMocks(this);

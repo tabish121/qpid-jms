@@ -18,6 +18,7 @@ package org.apache.qpid.jms.provider.amqp;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -25,6 +26,8 @@ import static org.junit.Assert.fail;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -41,7 +44,6 @@ import org.apache.qpid.jms.provider.ProviderFuture;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.testpeer.TestAmqpPeer;
 import org.apache.qpid.jms.util.IdGenerator;
-import org.apache.qpid.proton.engine.impl.TransportImpl;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -121,16 +123,6 @@ public class AmqpProviderTest extends QpidJmsTestCase {
     }
 
     @Test(timeout=20000)
-    public void testEnableTraceFrames() throws Exception {
-        provider = new AmqpProviderFactory().createProvider(getDefaultURI());
-        TransportImpl transport = (TransportImpl) provider.getProtonTransport();
-        assertNotNull(transport);
-        assertNull(transport.getProtocolTracer());
-        provider.setTraceFrames(true);
-        assertNotNull(transport.getProtocolTracer());
-    }
-
-    @Test(timeout=20000)
     public void testCreateFailsWithUnknownProtocol() throws Exception {
         try {
             AmqpProviderFactory factory = new AmqpProviderFactory();
@@ -182,14 +174,12 @@ public class AmqpProviderTest extends QpidJmsTestCase {
 
             provider = new AmqpProviderFactory().createProvider(getPeerURI(testPeer));
 
-            TransportImpl transport = (TransportImpl) provider.getProtonTransport();
-
             final int NEW_TIMEOUT = provider.getIdleTimeout() + 500;
 
             provider.setIdleTimeout(NEW_TIMEOUT);
             provider.connect(connectionInfo);
 
-            assertEquals(NEW_TIMEOUT, transport.getIdleTimeout());
+            assertEquals(NEW_TIMEOUT, provider.getProtonEngine().connection().getIdleTimeout());
 
             testPeer.expectOpen();
             testPeer.expectClose();
@@ -200,21 +190,19 @@ public class AmqpProviderTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout=20000)
+    @Test(timeout = 20_000)
     public void testSetMaxFrameSize() throws Exception {
         try (TestAmqpPeer testPeer = new TestAmqpPeer()) {
             testPeer.expectSaslAnonymous();
 
             provider = new AmqpProviderFactory().createProvider(getPeerURI(testPeer));
 
-            TransportImpl transport = (TransportImpl) provider.getProtonTransport();
-
-            final int NEW_MAX_FRAME_SIZE = provider.getMaxFrameSize() + 500;
+            final int NEW_MAX_FRAME_SIZE = new Random(System.nanoTime()).nextInt(Integer.MAX_VALUE);
 
             provider.setMaxFrameSize(NEW_MAX_FRAME_SIZE);
             provider.connect(connectionInfo);
 
-            assertEquals(NEW_MAX_FRAME_SIZE, transport.getMaxFrameSize());
+            assertEquals(NEW_MAX_FRAME_SIZE, provider.getProtonEngine().connection().getMaxFrameSize());
 
             testPeer.expectOpen();
             testPeer.expectClose();
@@ -232,14 +220,10 @@ public class AmqpProviderTest extends QpidJmsTestCase {
 
             provider = new AmqpProviderFactory().createProvider(getPeerURI(testPeer));
 
-            TransportImpl transport = (TransportImpl) provider.getProtonTransport();
-
-            final int RECORDED_MAX = transport.getMaxFrameSize();
-
             provider.setMaxFrameSize(-1);
             provider.connect(connectionInfo);
 
-            assertEquals(RECORDED_MAX, transport.getMaxFrameSize());
+            assertNotEquals(-1, provider.getProtonEngine().connection().getMaxFrameSize());
 
             testPeer.expectOpen();
             testPeer.expectClose();
@@ -356,6 +340,7 @@ public class AmqpProviderTest extends QpidJmsTestCase {
 
             JmsConnectionInfo connectionInfo = createConnectionInfo();
 
+            connectionInfo.setClientId(UUID.randomUUID().toString(), false);
             connectionInfo.setConnectTimeout(CONNECT_TIMEOUT);
             connectionInfo.setCloseTimeout(CLOSE_TIMEOUT);
             connectionInfo.setSendTimeout(SEND_TIMEOUT);

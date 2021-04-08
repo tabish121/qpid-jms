@@ -73,10 +73,10 @@ public class MultiTransferFrameMessageIntegrationTest extends QpidJmsTestCase {
             Queue queue = session.createQueue("myQueue");
 
             PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE);
+            properties.setContentType(OCTET_STREAM_CONTENT_TYPE);
 
             MessageAnnotationsDescribedType msgAnnotations = new MessageAnnotationsDescribedType();
-            msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE);
+            msgAnnotations.setSymbolKeyedAnnotation(JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE);
 
             Random rand = new Random(System.currentTimeMillis());
             int payloadStartPoint = rand.nextInt(6);
@@ -87,8 +87,8 @@ public class MultiTransferFrameMessageIntegrationTest extends QpidJmsTestCase {
             testPeer.expectReceiverAttach();
 
             testPeer.expectLinkFlowAndSendBackMessages(null, msgAnnotations, properties, null, dataContent, 1,
-                                                      true, false, Matchers.equalTo(UnsignedInteger.valueOf(1)), 1,
-                                                      false, false, msgPayloadPerFrame, sendFinalTransferFrameWithoutPayload);
+                                                       true, false, Matchers.equalTo(UnsignedInteger.valueOf(1)), 1,
+                                                       false, false, msgPayloadPerFrame, sendFinalTransferFrameWithoutPayload);
 
             testPeer.expectDispositionThatIsAcceptedAndSettled();
 

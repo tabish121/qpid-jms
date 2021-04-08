@@ -28,7 +28,6 @@ import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.SERIA
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.isContentType;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -39,25 +38,24 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
 import org.apache.qpid.jms.util.ContentTypeSupport;
 import org.apache.qpid.jms.util.InvalidContentTypeException;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.Symbol;
-import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
-import org.apache.qpid.proton.amqp.messaging.AmqpValue;
-import org.apache.qpid.proton.amqp.messaging.ApplicationProperties;
-import org.apache.qpid.proton.amqp.messaging.Data;
-import org.apache.qpid.proton.amqp.messaging.DeliveryAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Footer;
-import org.apache.qpid.proton.amqp.messaging.Header;
-import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
-import org.apache.qpid.proton.amqp.messaging.Properties;
-import org.apache.qpid.proton.amqp.messaging.Section;
-import org.apache.qpid.proton.codec.AMQPDefinedTypes;
-import org.apache.qpid.proton.codec.DecoderImpl;
-import org.apache.qpid.proton.codec.EncoderImpl;
-import org.apache.qpid.proton.codec.ReadableBuffer;
-import org.apache.qpid.proton.codec.WritableBuffer;
-
-import io.netty.buffer.ByteBuf;
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonByteBufferAllocator;
+import org.apache.qpid.protonj2.codec.CodecFactory;
+import org.apache.qpid.protonj2.codec.Decoder;
+import org.apache.qpid.protonj2.codec.DecoderState;
+import org.apache.qpid.protonj2.codec.Encoder;
+import org.apache.qpid.protonj2.codec.EncoderState;
+import org.apache.qpid.protonj2.types.Binary;
+import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
+import org.apache.qpid.protonj2.types.messaging.ApplicationProperties;
+import org.apache.qpid.protonj2.types.messaging.Data;
+import org.apache.qpid.protonj2.types.messaging.DeliveryAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Footer;
+import org.apache.qpid.protonj2.types.messaging.Header;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
+import org.apache.qpid.protonj2.types.messaging.Properties;
+import org.apache.qpid.protonj2.types.messaging.Section;
 
 /**
  * AMQP Codec class used to hide the details of encode / decode
@@ -65,14 +63,13 @@ import io.netty.buffer.ByteBuf;
 public final class AmqpCodec {
 
     private static class EncoderDecoderContext {
-        DecoderImpl decoder = new DecoderImpl();
-        EncoderImpl encoder = new EncoderImpl(decoder);
-        {
-            AMQPDefinedTypes.registerAllTypes(decoder, encoder);
-        }
+        Decoder decoder = CodecFactory.getDecoder();
+        DecoderState decoderState = decoder.newDecoderState();
+        Encoder encoder = CodecFactory.getEncoder();
+        EncoderState encoderState = encoder.newEncoderState();
 
         // Store local duplicates from the global cache for thread safety.
-        Map<Integer, ReadableBuffer> messageAnnotationsCache = new HashMap<>();
+        Map<Integer, ProtonBuffer> messageAnnotationsCache = new HashMap<>();
     }
 
     private static final ThreadLocal<EncoderDecoderContext> TLS_CODEC = new ThreadLocal<EncoderDecoderContext>() {
@@ -88,20 +85,34 @@ public final class AmqpCodec {
      * be thread safe as many different producers on different threads can be passing data
      * through this codec and accessing the cache if a TLS duplicate isn't populated yet.
      */
-    private static ConcurrentMap<Integer, ReadableBuffer> GLOBAL_ANNOTATIONS_CACHE = new ConcurrentHashMap<>();
+    private static ConcurrentMap<Integer, ProtonBuffer> GLOBAL_ANNOTATIONS_CACHE = new ConcurrentHashMap<>();
 
     /**
      * @return a Encoder instance.
      */
-    public static EncoderImpl getEncoder() {
+    public static Encoder getEncoder() {
         return TLS_CODEC.get().encoder;
     }
 
     /**
      * @return a Decoder instance.
      */
-    public static DecoderImpl getDecoder() {
+    public static Decoder getDecoder() {
         return TLS_CODEC.get().decoder;
+    }
+
+    /**
+     * @return a EncoderState instance.
+     */
+    public static EncoderState getEncoderState() {
+        return TLS_CODEC.get().encoderState;
+    }
+
+    /**
+     * @return a DecoderState instance.
+     */
+    public static DecoderState getDecoderState() {
+        return TLS_CODEC.get().decoderState;
     }
 
     /**
@@ -112,19 +123,19 @@ public final class AmqpCodec {
      *
      * @return a buffer holding the encoded bytes of the given AMQP Section object.
      */
-    public static ByteBuf encode(Section section) {
+    public static ProtonBuffer encode(Section<?> section) {
         if (section == null) {
             return null;
         }
 
-        AmqpWritableBuffer buffer = new AmqpWritableBuffer();
+        ProtonBuffer buffer = ProtonByteBufferAllocator.DEFAULT.allocate();
 
-        EncoderImpl encoder = getEncoder();
-        encoder.setByteBuffer(buffer);
-        encoder.writeObject(section);
-        encoder.setByteBuffer((WritableBuffer) null);
+        Encoder encoder = getEncoder();
+        EncoderState encoderState = getEncoderState();
 
-        return buffer.getBuffer();
+        encoder.writeObject(buffer, encoderState, section);
+
+        return buffer;
     }
 
     /**
@@ -135,16 +146,23 @@ public final class AmqpCodec {
      *
      * @return a Section object read from its encoded form.
      */
-    public static Section decode(ByteBuf encoded) {
+    public static Section<?> decode(ProtonBuffer encoded) {
         if (encoded == null || !encoded.isReadable()) {
             return null;
         }
 
-        DecoderImpl decoder = TLS_CODEC.get().decoder;
-        decoder.setByteBuffer(encoded.nioBuffer());
-        Section result = (Section) decoder.readObject();
-        decoder.setByteBuffer(null);
-        encoded.resetReaderIndex();
+        Decoder decoder = TLS_CODEC.get().decoder;
+        DecoderState decoderState = TLS_CODEC.get().decoderState;
+
+        final Section<?> result;
+
+        int position = encoded.getReadIndex();
+
+        try {
+            result = (Section<?>) decoder.readObject(encoded, decoderState);
+        } finally {
+            encoded.setReadIndex(position);
+        }
 
         return result;
     }
@@ -158,72 +176,70 @@ public final class AmqpCodec {
      *
      * @return a buffer containing the wire level representation of the input Message.
      */
-    public static ByteBuf encodeMessage(AmqpJmsMessageFacade message) {
+    public static ProtonBuffer encodeMessage(AmqpJmsMessageFacade message) {
         EncoderDecoderContext context = TLS_CODEC.get();
 
-        AmqpWritableBuffer buffer = new AmqpWritableBuffer();
+        ProtonBuffer buffer = ProtonByteBufferAllocator.DEFAULT.allocate();
 
-        EncoderImpl encoder = context.encoder;
-        encoder.setByteBuffer(buffer);
+        Encoder encoder = context.encoder;
+        EncoderState encoderState = context.encoderState;
 
         Header header = message.getHeader();
         DeliveryAnnotations deliveryAnnotations = message.getDeliveryAnnotations();
         MessageAnnotations messageAnnotations = message.getMessageAnnotations();
         Properties properties = message.getProperties();
         ApplicationProperties applicationProperties = message.getApplicationProperties();
-        Section body = message.getBody();
+        Section<?> body = message.getBody();
         Footer footer = message.getFooter();
 
-        if (header != null) {
-            encoder.writeObject(header);
+        if (header != null && !header.isEmpty()) {
+            encoder.writeObject(buffer, encoderState, header);
         }
         if (deliveryAnnotations != null) {
-            encoder.writeObject(deliveryAnnotations);
+            encoder.writeObject(buffer, encoderState, deliveryAnnotations);
         }
         if (messageAnnotations != null) {
             // Ensure annotations contain required message type and destination type data
             AmqpDestinationHelper.setReplyToAnnotationFromDestination(message.getReplyTo(), messageAnnotations);
             AmqpDestinationHelper.setToAnnotationFromDestination(message.getDestination(), messageAnnotations);
             messageAnnotations.getValue().put(AmqpMessageSupport.JMS_MSG_TYPE, message.getJmsMsgType());
-            encoder.writeObject(messageAnnotations);
+            encoder.writeObject(buffer, encoderState, messageAnnotations);
         } else {
-            buffer.put(getCachedMessageAnnotationsBuffer(message, context));
+            buffer.writeBytes(getCachedMessageAnnotationsBuffer(message, context));
         }
-        if (properties != null) {
-            encoder.writeObject(properties);
+        if (properties != null && !properties.isEmpty()) {
+            encoder.writeObject(buffer, encoderState, properties);
         }
         if (applicationProperties != null) {
-            encoder.writeObject(applicationProperties);
+            encoder.writeObject(buffer, encoderState, applicationProperties);
         }
         if (body != null) {
-            encoder.writeObject(body);
+            encoder.writeObject(buffer, encoderState, body);
         }
         if (footer != null) {
-            encoder.writeObject(footer);
+            encoder.writeObject(buffer, encoderState, footer);
         }
 
-        encoder.setByteBuffer((WritableBuffer) null);
-
-        return buffer.getBuffer();
+        return buffer;
     }
 
-    private static ReadableBuffer getCachedMessageAnnotationsBuffer(AmqpJmsMessageFacade message, EncoderDecoderContext context) {
+    private static ProtonBuffer getCachedMessageAnnotationsBuffer(AmqpJmsMessageFacade message, EncoderDecoderContext context) {
         byte msgType = message.getJmsMsgType();
         byte toType = AmqpDestinationHelper.toTypeAnnotation(message.getDestination());
         byte replyToType = AmqpDestinationHelper.toTypeAnnotation(message.getReplyTo());
 
         Integer entryKey = Integer.valueOf((replyToType << 16) | (toType << 8) | msgType);
 
-        ReadableBuffer result = context.messageAnnotationsCache.get(entryKey);
+        ProtonBuffer result = context.messageAnnotationsCache.get(entryKey);
         if (result == null) {
             result = populateMessageAnnotationsCacheEntry(message, entryKey, context);
         }
 
-        return result.rewind();
+        return result.setReadIndex(0);
     }
 
-    private static ReadableBuffer populateMessageAnnotationsCacheEntry(AmqpJmsMessageFacade message, Integer entryKey, EncoderDecoderContext context) {
-        ReadableBuffer result = GLOBAL_ANNOTATIONS_CACHE.get(entryKey);
+    private static ProtonBuffer populateMessageAnnotationsCacheEntry(AmqpJmsMessageFacade message, Integer entryKey, EncoderDecoderContext context) {
+        ProtonBuffer result = GLOBAL_ANNOTATIONS_CACHE.get(entryKey);
         if (result == null) {
             MessageAnnotations messageAnnotations = new MessageAnnotations(new HashMap<>());
 
@@ -240,20 +256,13 @@ public final class AmqpCodec {
             // This is the maximum possible encoding size that could appear for all the possible data we
             // store in the cached buffer if the codec was to do the worst possible encode of these types.
             // We could do a custom encoding to make it minimal which would result in a max of 70 bytes.
-            ByteBuffer buffer = ByteBuffer.allocate(124);
+            result = ProtonByteBufferAllocator.DEFAULT.allocate();
 
-            WritableBuffer oldBuffer = context.encoder.getBuffer();
-            context.encoder.setByteBuffer(buffer);
-            context.encoder.writeObject(messageAnnotations);
-            context.encoder.setByteBuffer(oldBuffer);
-
-            buffer.flip();
-
-            result = ReadableBuffer.ByteBufferReader.wrap(buffer);
+            context.encoder.writeObject(result, context.encoderState, messageAnnotations);
 
             // Race on populating the global cache could duplicate work but we should avoid keeping
             // both copies around in memory.
-            ReadableBuffer previous = GLOBAL_ANNOTATIONS_CACHE.putIfAbsent(entryKey, result);
+            ProtonBuffer previous = GLOBAL_ANNOTATIONS_CACHE.putIfAbsent(entryKey, result);
             if (previous != null) {
                 result = previous.duplicate();
             } else {
@@ -281,22 +290,22 @@ public final class AmqpCodec {
      *
      * @throws IOException if an error occurs while creating the message objects.
      */
-    public static AmqpJmsMessageFacade decodeMessage(AmqpConsumer consumer, ReadableBuffer messageBytes) throws IOException {
+    public static AmqpJmsMessageFacade decodeMessage(AmqpConsumer consumer, ProtonBuffer messageBytes) throws IOException {
 
-        DecoderImpl decoder = getDecoder();
-        decoder.setBuffer(messageBytes);
+        Decoder decoder = getDecoder();
+        DecoderState decoderState = getDecoderState();
 
         Header header = null;
         DeliveryAnnotations deliveryAnnotations = null;
         MessageAnnotations messageAnnotations = null;
         Properties properties = null;
         ApplicationProperties applicationProperties = null;
-        Section body = null;
+        Section<?> body = null;
         Footer footer = null;
-        Section section = null;
+        Section<?> section = null;
 
-        while (messageBytes.hasRemaining()) {
-            section = (Section) decoder.readObject();
+        while (messageBytes.isReadable()) {
+            section = (Section<?>) decoder.readObject(messageBytes, decoderState);
 
             switch (section.getType()) {
                 case Header:
@@ -326,8 +335,6 @@ public final class AmqpCodec {
                     throw new IOException("Unknown Message Section forced decode abort.");
             }
         }
-
-        decoder.setByteBuffer(null);
 
         // First we try the easy way, if the annotation is there we don't have to work hard.
         AmqpJmsMessageFacade result = createFromMsgAnnotation(messageAnnotations);
@@ -376,8 +383,8 @@ public final class AmqpCodec {
         return null;
     }
 
-    private static AmqpJmsMessageFacade createWithoutAnnotation(Section body, Properties properties) {
-        Symbol messageContentType = properties != null ? properties.getContentType() : null;
+    private static AmqpJmsMessageFacade createWithoutAnnotation(Section<?> body, Properties properties) {
+        String messageContentType = properties != null ? properties.getContentType() : null;
 
         if (body == null) {
             if (isContentType(SERIALIZED_JAVA_OBJECT_CONTENT_TYPE, messageContentType)) {
@@ -406,7 +413,7 @@ public final class AmqpCodec {
                 }
             }
         } else if (body instanceof AmqpValue) {
-            Object value = ((AmqpValue) body).getValue();
+            Object value = ((AmqpValue<?>) body).getValue();
 
             if (value == null || value instanceof String) {
                 return new AmqpJmsTextMessageFacade(StandardCharsets.UTF_8);
@@ -422,10 +429,10 @@ public final class AmqpCodec {
         return null;
     }
 
-    private static Charset getCharsetForTextualContent(Symbol messageContentType) {
+    private static Charset getCharsetForTextualContent(String messageContentType) {
         if (messageContentType != null) {
             try {
-                return ContentTypeSupport.parseContentTypeForTextualCharset(messageContentType.toString());
+                return ContentTypeSupport.parseContentTypeForTextualCharset(messageContentType);
             } catch (InvalidContentTypeException e) {
             }
         }
