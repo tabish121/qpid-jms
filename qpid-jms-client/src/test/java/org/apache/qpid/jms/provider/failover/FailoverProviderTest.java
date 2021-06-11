@@ -346,7 +346,7 @@ public class FailoverProviderTest extends FailoverProviderTestSupport {
         Connection connection = factory.createConnection();
         connection.start();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        Destination destination = session.createTopic(_testName.getMethodName());
+        Destination destination = session.createTopic(testName.getMethodName());
         session.createConsumer(destination).close();
         connection.close();
 
@@ -363,7 +363,7 @@ public class FailoverProviderTest extends FailoverProviderTestSupport {
         Connection connection = factory.createConnection();
         connection.start();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        Destination destination = session.createTopic(_testName.getMethodName());
+        Destination destination = session.createTopic(testName.getMethodName());
         session.createProducer(destination).close();
         connection.close();
 

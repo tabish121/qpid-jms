@@ -36,7 +36,7 @@ public class JmsQueueReceiverClosedTest extends JmsConnectionTestSupport {
     protected void createTestResources() throws Exception {
         connection = createQueueConnectionToMockProvider();
         QueueSession session = ((QueueConnection) connection).createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
-        Queue destination = session.createQueue(_testName.getMethodName());
+        Queue destination = session.createQueue(testName.getMethodName());
         receiver = session.createReceiver(destination);
         receiver.close();
     }

@@ -19,6 +19,7 @@
 package org.apache.qpid.jms.integration;
 
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -46,116 +47,85 @@ import javax.jms.Session;
 import org.apache.qpid.jms.JmsConnection;
 import org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
-import org.apache.qpid.jms.test.testpeer.TestAmqpPeer;
-import org.apache.qpid.jms.test.testpeer.describedtypes.sections.AmqpValueDescribedType;
-import org.apache.qpid.jms.test.testpeer.describedtypes.sections.DataDescribedType;
 import org.apache.qpid.jms.test.testpeer.describedtypes.sections.MessageAnnotationsDescribedType;
 import org.apache.qpid.jms.test.testpeer.describedtypes.sections.PropertiesDescribedType;
-import org.apache.qpid.jms.test.testpeer.matchers.sections.MessageAnnotationsSectionMatcher;
-import org.apache.qpid.jms.test.testpeer.matchers.sections.MessageHeaderSectionMatcher;
-import org.apache.qpid.jms.test.testpeer.matchers.sections.MessagePropertiesSectionMatcher;
-import org.apache.qpid.jms.test.testpeer.matchers.sections.TransferPayloadCompositeMatcher;
-import org.apache.qpid.jms.test.testpeer.matchers.types.EncodedDataMatcher;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.DescribedType;
-import org.apache.qpid.proton.amqp.Symbol;
+import org.apache.qpid.protonj2.test.driver.ProtonTestServer;
+import org.apache.qpid.protonj2.test.driver.matchers.messaging.HeaderMatcher;
+import org.apache.qpid.protonj2.test.driver.matchers.messaging.MessageAnnotationsMatcher;
+import org.apache.qpid.protonj2.test.driver.matchers.messaging.PropertiesMatcher;
+import org.apache.qpid.protonj2.test.driver.matchers.transport.TransferPayloadCompositeMatcher;
+import org.apache.qpid.protonj2.test.driver.matchers.types.EncodedDataMatcher;
 import org.junit.Test;
 
 public class BytesMessageIntegrationTest extends QpidJmsTestCase {
-    private final IntegrationTestFixture testFixture = new IntegrationTestFixture();
+
+    private final IntegrationTestFixture2 testFixture = new IntegrationTestFixture2();
 
     @Test(timeout = 20000)
     public void testSendBasicBytesMessageWithContent() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
-            testPeer.expectBegin();
-            testPeer.expectSenderAttach();
 
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-            Queue queue = session.createQueue("myQueue");
-            MessageProducer producer = session.createProducer(queue);
+            final byte[] content = "myBytes".getBytes();
 
-            byte[] content = "myBytes".getBytes();
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofSender().respond();
+            testPeer.remoteFlow().withLinkCredit(1).queue();
 
-            MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true).withDurable(equalTo(true));
-            MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_MSG_TYPE, equalTo(AmqpMessageSupport.JMS_BYTES_MESSAGE));
-            MessagePropertiesSectionMatcher propertiesMatcher = new MessagePropertiesSectionMatcher(true);
-            propertiesMatcher.withContentType(equalTo(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE));
+            HeaderMatcher headersMatcher = new HeaderMatcher(true).withDurable(equalTo(true));
+            MessageAnnotationsMatcher msgAnnotationsMatcher = new MessageAnnotationsMatcher(true);
+            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_MSG_TYPE.toString(), equalTo(AmqpMessageSupport.JMS_BYTES_MESSAGE));
+            PropertiesMatcher propertiesMatcher = new PropertiesMatcher(true);
+            propertiesMatcher.withContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
             messageMatcher.setHeadersMatcher(headersMatcher);
             messageMatcher.setMessageAnnotationsMatcher(msgAnnotationsMatcher);
             messageMatcher.setPropertiesMatcher(propertiesMatcher);
-            messageMatcher.setMessageContentMatcher(new EncodedDataMatcher(new Binary(content)));
+            messageMatcher.setMessageContentMatcher(new EncodedDataMatcher(content));
 
-            testPeer.expectTransfer(messageMatcher);
+            testPeer.expectTransfer().withPayload(messageMatcher).accept();
+            testPeer.expectClose().respond();
 
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Queue queue = session.createQueue("myQueue");
+            MessageProducer producer = session.createProducer(queue);
             BytesMessage message = session.createBytesMessage();
             message.writeBytes(content);
 
             producer.send(message);
 
-            testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
     @Test(timeout = 20000)
     public void testReceiveBytesMessageUsingDataSectionWithContentTypeOctectStream() throws Exception {
-        doReceiveBasicBytesMessageUsingDataSectionTestImpl(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE, true);
-    }
-
-    @Test(timeout = 20000)
-    public void testReceiveBytesMessageUsingDataSectionWithContentTypeOctectStreamNoTypeAnnotation() throws Exception {
-        doReceiveBasicBytesMessageUsingDataSectionTestImpl(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE, false);
-    }
-
-    @Test(timeout = 20000)
-    public void testReceiveBasicBytesMessageUsingDataSectionWithContentTypeEmptyNoTypeAnnotation() throws Exception {
-        doReceiveBasicBytesMessageUsingDataSectionTestImpl(Symbol.valueOf(""), false);
-    }
-
-    @Test(timeout = 20000)
-    public void testReceiveBasicBytesMessageUsingDataSectionWithContentTypeUnknownNoTypeAnnotation() throws Exception {
-        doReceiveBasicBytesMessageUsingDataSectionTestImpl(Symbol.valueOf("type/unknown"), false);
-    }
-
-    @Test(timeout = 20000)
-    public void testReceiveBasicBytesMessageUsingDataSectionWithContentTypeNotSetNoTypeAnnotation() throws Exception {
-        doReceiveBasicBytesMessageUsingDataSectionTestImpl(null, false);
-    }
-
-    private void doReceiveBasicBytesMessageUsingDataSectionTestImpl(Symbol contentType, boolean typeAnnotation) throws JMSException, InterruptedException, Exception, IOException {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            final byte[] expectedContent = "expectedContent".getBytes();
+
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofReceiver().respond();
+            testPeer.expectFlow().withLinkCredit(notNullValue());
+            testPeer.remoteTransfer().withProperties().withContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString())
+                                     .also()
+                                     .withMessageAnnotations().withAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE)
+                                     .also()
+                                     .withBody().withData(expectedContent)
+                                     .also()
+                                     .withDeliveryId(0).queue();
+            testPeer.expectDisposition().withState().accepted().withSettled(true);
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             Queue queue = session.createQueue("myQueue");
-
-            PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(contentType);
-
-            MessageAnnotationsDescribedType msgAnnotations = null;
-            if (typeAnnotation) {
-                msgAnnotations = new MessageAnnotationsDescribedType();
-                msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE);
-            }
-
-            final byte[] expectedContent = "expectedContent".getBytes();
-            DescribedType dataContent = new DataDescribedType(new Binary(expectedContent));
-
-            testPeer.expectReceiverAttach();
-            testPeer.expectLinkFlowRespondWithTransfer(null, msgAnnotations, properties, null, dataContent);
-            testPeer.expectDispositionThatIsAcceptedAndSettled();
-
             MessageConsumer messageConsumer = session.createConsumer(queue);
             Message receivedMessage = messageConsumer.receive(3000);
-            testPeer.waitForAllHandlersToComplete(3000);
+
+            testPeer.waitForScriptToComplete(3000);
 
             assertNotNull(receivedMessage);
             assertTrue(receivedMessage instanceof BytesMessage);
@@ -166,10 +136,70 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
             assertEquals(recievedContent.length, readBytes);
             assertTrue(Arrays.equals(expectedContent, recievedContent));
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
+        }
+    }
+
+    @Test(timeout = 20000)
+    public void testReceiveBytesMessageUsingDataSectionWithContentTypeOctectStreamNoTypeAnnotation() throws Exception {
+        doReceiveBasicBytesMessageUsingDataSectionTestImpl(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
+    }
+
+    @Test(timeout = 20000)
+    public void testReceiveBasicBytesMessageUsingDataSectionWithContentTypeEmptyNoTypeAnnotation() throws Exception {
+        doReceiveBasicBytesMessageUsingDataSectionTestImpl("");
+    }
+
+    @Test(timeout = 20000)
+    public void testReceiveBasicBytesMessageUsingDataSectionWithContentTypeUnknownNoTypeAnnotation() throws Exception {
+        doReceiveBasicBytesMessageUsingDataSectionTestImpl("type/unknown");
+    }
+
+    @Test(timeout = 20000)
+    public void testReceiveBasicBytesMessageUsingDataSectionWithContentTypeNotSetNoTypeAnnotation() throws Exception {
+        doReceiveBasicBytesMessageUsingDataSectionTestImpl(null);
+    }
+
+    private void doReceiveBasicBytesMessageUsingDataSectionTestImpl(String contentType) throws JMSException, InterruptedException, Exception, IOException {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            Connection connection = testFixture.establishConnecton(testPeer);
+            connection.start();
+
+            final byte[] expectedContent = "expectedContent".getBytes();
+
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofReceiver().respond();
+            testPeer.expectFlow().withLinkCredit(notNullValue());
+            testPeer.remoteTransfer().withProperties().withContentType(contentType == null ? null : contentType)
+                                     .also()
+                                     .withBody().withData(expectedContent)
+                                     .also()
+                                     .withDeliveryId(0).queue();
+            testPeer.expectDisposition().withState().accepted().withSettled(true);
+
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Queue queue = session.createQueue("myQueue");
+            MessageConsumer messageConsumer = session.createConsumer(queue);
+            Message receivedMessage = messageConsumer.receive(3000);
+
+            testPeer.waitForScriptToComplete(3000);
+
+            assertNotNull(receivedMessage);
+            assertTrue(receivedMessage instanceof BytesMessage);
+            BytesMessage bytesMessage = (BytesMessage) receivedMessage;
+            assertEquals(expectedContent.length, bytesMessage.getBodyLength());
+            byte[] recievedContent = new byte[expectedContent.length];
+            int readBytes = bytesMessage.readBytes(recievedContent);
+            assertEquals(recievedContent.length, readBytes);
+            assertTrue(Arrays.equals(expectedContent, recievedContent));
+
+            testPeer.expectClose().respond();
+            connection.close();
+
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
@@ -184,11 +214,11 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
      */
     @Test(timeout = 20000)
     public void testReceiveBytesMessageAndResendAfterResetAndPartialRead() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             Queue queue = session.createQueue("myQueue");
@@ -196,8 +226,7 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
             // Prepare an AMQP message for the test peer to send, containing the content type and
             // a data body section populated with expected bytes for use as a JMS BytesMessage
             PropertiesDescribedType properties = new PropertiesDescribedType();
-            Symbol contentType = AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE;
-            properties.setContentType(contentType);
+            properties.setContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
 
             MessageAnnotationsDescribedType msgAnnotations = new MessageAnnotationsDescribedType();
             msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE);
@@ -228,17 +257,22 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
             dos.writeUTF(myUTF);
 
             byte[] bytesPayload = baos.toByteArray();
-            Binary binaryPayload = new Binary(bytesPayload);
-            DescribedType dataSectionContent = new DataDescribedType(binaryPayload);
 
             // receive the message from the test peer
-            testPeer.expectReceiverAttach();
-            testPeer.expectLinkFlowRespondWithTransfer(null, msgAnnotations, properties, null, dataSectionContent);
-            testPeer.expectDispositionThatIsAcceptedAndSettled();
+            testPeer.expectAttach().ofReceiver().respond();
+            testPeer.expectFlow().withLinkCredit(notNullValue());
+            testPeer.remoteTransfer().withProperties().withContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString())
+                                     .also()
+                                     .withMessageAnnotations().withAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE)
+                                     .also()
+                                     .withBody().withData(bytesPayload)
+                                     .also()
+                                     .withDeliveryId(0).queue();
+            testPeer.expectDisposition().withState().accepted().withSettled(true);
 
             MessageConsumer messageConsumer = session.createConsumer(queue);
             Message receivedMessage = messageConsumer.receive(3000);
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
 
             // verify the content is as expected
             assertNotNull("Message was not received", receivedMessage);
@@ -263,61 +297,70 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
             assertEquals("Unexpected boolean value after reset", myBool, receivedBytesMessage.readBoolean());
 
             // Send the received message back to the test peer and have it check the result is as expected
-            testPeer.expectSenderAttach();
+            testPeer.expectAttach().ofSender().respond();
+            testPeer.remoteFlow().withLinkCredit(10).queue();
+
             MessageProducer producer = session.createProducer(queue);
 
-            MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true);
-            MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            MessagePropertiesSectionMatcher propsMatcher = new MessagePropertiesSectionMatcher(true);
-            propsMatcher.withContentType(equalTo(contentType));
+            HeaderMatcher headersMatcher = new HeaderMatcher(true);
+            MessageAnnotationsMatcher msgAnnotationsMatcher = new MessageAnnotationsMatcher(true);
+            PropertiesMatcher propsMatcher = new PropertiesMatcher(true);
+            propsMatcher.withContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
             messageMatcher.setHeadersMatcher(headersMatcher);
             messageMatcher.setMessageAnnotationsMatcher(msgAnnotationsMatcher);
             messageMatcher.setPropertiesMatcher(propsMatcher);
-            messageMatcher.setMessageContentMatcher(new EncodedDataMatcher(binaryPayload));
-            testPeer.expectTransfer(messageMatcher);
+            messageMatcher.setMessageContentMatcher(new EncodedDataMatcher(bytesPayload));
+
+            testPeer.expectTransfer().withPayload(messageMatcher).accept();
 
             producer.send(receivedBytesMessage);
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
     @Test(timeout = 20000)
     public void testGetBodyBytesMessageFailsWhenWrongTypeRequested() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             Queue queue = session.createQueue("myQueue");
 
-            PropertiesDescribedType properties = new PropertiesDescribedType();
-            properties.setContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE);
-
-            MessageAnnotationsDescribedType msgAnnotations = null;
-            msgAnnotations = new MessageAnnotationsDescribedType();
-            msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE);
-
             final byte[] expectedContent = "expectedContent".getBytes();
-            DescribedType dataContent = new DataDescribedType(new Binary(expectedContent));
 
-            testPeer.expectReceiverAttach();
-            testPeer.expectLinkFlowRespondWithTransfer(null, msgAnnotations, properties, null, dataContent, 2);
-            testPeer.expectDispositionThatIsAcceptedAndSettled();
-            testPeer.expectDispositionThatIsAcceptedAndSettled();
+            testPeer.expectAttach().ofReceiver().respond();
+            testPeer.expectFlow().withLinkCredit(notNullValue());
+            testPeer.remoteTransfer().withProperties().withContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString())
+                                     .also()
+                                     .withMessageAnnotations().withAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE)
+                                     .also()
+                                     .withBody().withData(expectedContent)
+                                     .also()
+                                     .withDeliveryId(0).queue();
+            testPeer.remoteTransfer().withProperties().withContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString())
+                                     .also()
+                                     .withMessageAnnotations().withAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_BYTES_MESSAGE)
+                                     .also()
+                                     .withBody().withData(expectedContent)
+                                     .also()
+                                     .withDeliveryId(1).queue();
+            testPeer.expectDisposition().withState().accepted().withSettled(true);
+            testPeer.expectDisposition().withState().accepted().withSettled(true);
 
             MessageConsumer messageConsumer = session.createConsumer(queue);
 
             Message readMsg1 = messageConsumer.receive(1000);
             Message readMsg2 = messageConsumer.receive(1000);
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
 
             assertNotNull(readMsg1);
             assertNotNull(readMsg2);
@@ -340,11 +383,11 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
             assertTrue(Arrays.equals(expectedContent, received1));
             assertTrue(Arrays.equals(expectedContent, received2));
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
@@ -359,11 +402,11 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
      */
     @Test(timeout = 20000)
     public void testReceiveBytesMessageWithAmqpValueAndResendResultsInData() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             Queue queue = session.createQueue("myQueue");
@@ -398,18 +441,18 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
             dos.writeUTF(myUTF);
 
             byte[] bytesPayload = baos.toByteArray();
-            Binary binaryPayload = new Binary(bytesPayload);
 
-            DescribedType amqpValueSectionContent = new AmqpValueDescribedType(binaryPayload);
+            testPeer.expectAttach().ofReceiver().respond();
+            testPeer.expectFlow().withLinkCredit(notNullValue());
+            testPeer.remoteTransfer().withBody().withValue(bytesPayload)
+                                     .also()
+                                     .withDeliveryId(0).queue();
+            testPeer.expectDisposition().withState().accepted().withSettled(true);
 
             // receive the message from the test peer
-            testPeer.expectReceiverAttach();
-            testPeer.expectLinkFlowRespondWithTransfer(null, null, null, null, amqpValueSectionContent);
-            testPeer.expectDispositionThatIsAcceptedAndSettled();
-
             MessageConsumer messageConsumer = session.createConsumer(queue);
             Message receivedMessage = messageConsumer.receive(3000);
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
 
             // verify the content is as expected
             assertNotNull("Message was not received", receivedMessage);
@@ -434,51 +477,54 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
             assertEquals("Unexpected boolean value after reset", myBool, receivedBytesMessage.readBoolean());
 
             // Send the received message back to the test peer and have it check the result is as expected
-            testPeer.expectSenderAttach();
+            testPeer.expectAttach().ofSender().respond();
+            testPeer.remoteFlow().withLinkCredit(2).queue().afterDelay(1);
+
             MessageProducer producer = session.createProducer(queue);
 
-            MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true);
-            MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_MSG_TYPE, equalTo(AmqpMessageSupport.JMS_BYTES_MESSAGE));
-            MessagePropertiesSectionMatcher propsMatcher = new MessagePropertiesSectionMatcher(true);
-            propsMatcher.withContentType(equalTo(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE));
+            HeaderMatcher headersMatcher = new HeaderMatcher(true);
+            MessageAnnotationsMatcher msgAnnotationsMatcher = new MessageAnnotationsMatcher(true);
+            msgAnnotationsMatcher.withEntry(AmqpMessageSupport.JMS_MSG_TYPE.toString(), equalTo(AmqpMessageSupport.JMS_BYTES_MESSAGE));
+            PropertiesMatcher propsMatcher = new PropertiesMatcher(true);
+            propsMatcher.withContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE.toString());
             TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
             messageMatcher.setHeadersMatcher(headersMatcher);
             messageMatcher.setMessageAnnotationsMatcher(msgAnnotationsMatcher);
             messageMatcher.setPropertiesMatcher(propsMatcher);
-            messageMatcher.setMessageContentMatcher(new EncodedDataMatcher(binaryPayload));
-            testPeer.expectTransfer(messageMatcher);
+            messageMatcher.setMessageContentMatcher(new EncodedDataMatcher(bytesPayload));
+
+            testPeer.expectTransfer().withPayload(messageMatcher).accept();
 
             producer.send(receivedBytesMessage);
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
     @Test(timeout = 20000)
     public void testAsyncSendDoesNotMarksBytesMessageReadOnly() throws Exception {
-        try(TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             JmsConnection connection = (JmsConnection) testFixture.establishConnecton(testPeer);
             connection.setSendTimeout(15000);
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             String queueName = "myQueue";
             Queue queue = session.createQueue(queueName);
 
             BytesMessage message = session.createBytesMessage();
-            TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
 
             // Expect the producer to attach and grant it some credit, it should send
             // a transfer which we will not send any response so that we can check that
             // the inflight message is read-only
-            testPeer.expectSenderAttach();
-            testPeer.expectTransferButDoNotRespond(messageMatcher);
-            testPeer.expectClose();
+            testPeer.expectAttach().ofSender().respond();
+            testPeer.remoteFlow().withLinkCredit(1).queue();
+            testPeer.expectTransfer().withNonNullPayload();
+            testPeer.expectClose().respond();
 
             MessageProducer producer = session.createProducer(queue);
             producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
@@ -562,31 +608,31 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testAsyncCompletionSendMarksBytesMessageReadOnly() throws Exception {
-        try(TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             JmsConnection connection = (JmsConnection) testFixture.establishConnecton(testPeer);
             connection.setSendTimeout(15000);
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             String queueName = "myQueue";
             Queue queue = session.createQueue(queueName);
 
             BytesMessage message = session.createBytesMessage();
-            TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
 
             // Expect the producer to attach and grant it some credit, it should send
             // a transfer which we will not send any response so that we can check that
             // the inflight message is read-only
-            testPeer.expectSenderAttach();
-            testPeer.expectTransferButDoNotRespond(messageMatcher);
-            testPeer.expectClose();
+            testPeer.expectAttach().ofSender().respond();
+            testPeer.remoteFlow().withLinkCredit(1).queue();
+            testPeer.expectTransfer().withNonNullPayload();
+            testPeer.expectClose().respond();
 
             MessageProducer producer = session.createProducer(queue);
             TestJmsCompletionListener listener = new TestJmsCompletionListener();
@@ -652,7 +698,7 @@ public class BytesMessageIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 

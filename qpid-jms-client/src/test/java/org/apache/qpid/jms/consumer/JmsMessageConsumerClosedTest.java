@@ -37,7 +37,7 @@ public class JmsMessageConsumerClosedTest extends JmsConnectionTestSupport {
     protected MessageConsumer createConsumer() throws Exception {
         connection = createConnectionToMockProvider();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        Queue destination = session.createQueue(_testName.getMethodName());
+        Queue destination = session.createQueue(testName.getMethodName());
         MessageConsumer consumer = session.createConsumer(destination);
         consumer.close();
         return consumer;

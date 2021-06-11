@@ -40,7 +40,7 @@ public class JmsQueueSessionClosedTest extends JmsConnectionTestSupport {
         connection = createQueueConnectionToMockProvider();
 
         session = ((QueueConnection) connection).createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
-        Queue destination = session.createQueue(_testName.getMethodName());
+        Queue destination = session.createQueue(testName.getMethodName());
 
         sender = session.createSender(destination);
         receiver = session.createReceiver(destination);

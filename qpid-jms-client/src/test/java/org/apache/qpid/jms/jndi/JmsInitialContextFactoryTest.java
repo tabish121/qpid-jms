@@ -104,7 +104,7 @@ public class JmsInitialContextFactoryTest extends QpidJmsTestCase {
     }
 
     private void doDefaultConnectionFactorySeesFactorySpecificPropertyTestImpl(String propertyPrefix, String factoryName) throws Exception {
-        String updatedClientID = _testName.getMethodName();
+        String updatedClientID = testName.getMethodName();
 
         Hashtable<Object, Object> env = new Hashtable<Object, Object>();
         env.put(propertyPrefix + factoryName + "." + "clientID", updatedClientID);
@@ -145,7 +145,7 @@ public class JmsInitialContextFactoryTest extends QpidJmsTestCase {
     }
 
     private void doDefaultConnectionFactorySeesDefaultPropertyUpdatePropertyTestImpl(String propertyPrefix, String factoryName) throws Exception {
-        String updatedClientID = _testName.getMethodName();
+        String updatedClientID = testName.getMethodName();
 
         Hashtable<Object, Object> env = new Hashtable<Object, Object>();
         env.put(propertyPrefix + "clientID", updatedClientID);

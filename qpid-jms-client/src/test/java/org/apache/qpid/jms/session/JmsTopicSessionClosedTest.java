@@ -41,7 +41,7 @@ public class JmsTopicSessionClosedTest extends JmsConnectionTestSupport {
         connection = createTopicConnectionToMockProvider();
 
         session = ((TopicConnection) connection).createTopicSession(false, Session.AUTO_ACKNOWLEDGE);
-        destination = session.createTopic(_testName.getMethodName());
+        destination = session.createTopic(testName.getMethodName());
 
         publisher = session.createPublisher(destination);
         subscriber = session.createSubscriber(destination);

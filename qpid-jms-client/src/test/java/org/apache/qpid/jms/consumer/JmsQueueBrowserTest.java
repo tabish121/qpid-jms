@@ -48,7 +48,7 @@ public class JmsQueueBrowserTest extends JmsConnectionTestSupport {
         super.setUp();
         connection = createConnectionToMockProvider();
         session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        queue = session.createQueue(_testName.getMethodName());
+        queue = session.createQueue(testName.getMethodName());
         browser = session.createBrowser(queue);
     }
 

@@ -42,7 +42,7 @@ public class JmsSessionClosedTest extends JmsConnectionTestSupport {
     protected void createTestResources() throws Exception {
         connection = createConnectionToMockProvider();
         session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        Queue destination = session.createQueue(_testName.getMethodName());
+        Queue destination = session.createQueue(testName.getMethodName());
         sender = session.createProducer(destination);
         receiver = session.createConsumer(destination);
         session.close();

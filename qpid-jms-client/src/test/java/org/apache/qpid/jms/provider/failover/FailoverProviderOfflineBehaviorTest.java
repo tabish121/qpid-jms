@@ -93,7 +93,7 @@ public class FailoverProviderOfflineBehaviorTest extends FailoverProviderTestSup
         connection.start();
 
         Session session = connection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
-        Queue queue = session.createQueue(_testName.getMethodName());
+        Queue queue = session.createQueue(testName.getMethodName());
         MessageProducer producer = session.createProducer(queue);
 
         mockPeer.shutdown();
@@ -110,7 +110,7 @@ public class FailoverProviderOfflineBehaviorTest extends FailoverProviderTestSup
         connection.start();
 
         Session session = connection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
-        Queue queue = session.createQueue(_testName.getMethodName());
+        Queue queue = session.createQueue(testName.getMethodName());
         MessageConsumer consumer = session.createConsumer(queue);
 
         mockPeer.shutdown();
@@ -163,7 +163,7 @@ public class FailoverProviderOfflineBehaviorTest extends FailoverProviderTestSup
         connection.start();
 
         Session session = connection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
-        Queue queue = session.createQueue(_testName.getMethodName());
+        Queue queue = session.createQueue(testName.getMethodName());
         session.createConsumer(queue);
         session.createProducer(queue);
 
@@ -195,7 +195,7 @@ public class FailoverProviderOfflineBehaviorTest extends FailoverProviderTestSup
         connection.start();
 
         Session session = connection.createSession(true, Session.SESSION_TRANSACTED);
-        Queue queue = session.createQueue(_testName.getMethodName());
+        Queue queue = session.createQueue(testName.getMethodName());
         MessageProducer producer = session.createProducer(queue);
         producer.send(session.createMessage());
 
@@ -217,7 +217,7 @@ public class FailoverProviderOfflineBehaviorTest extends FailoverProviderTestSup
         connection.start();
 
         Session session = connection.createSession(true, Session.SESSION_TRANSACTED);
-        Queue queue = session.createQueue(_testName.getMethodName());
+        Queue queue = session.createQueue(testName.getMethodName());
         MessageProducer producer = session.createProducer(queue);
         producer.send(session.createMessage());
 

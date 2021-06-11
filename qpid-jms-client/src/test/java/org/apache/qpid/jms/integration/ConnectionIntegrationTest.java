@@ -1,22 +1,18 @@
 /*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.qpid.jms.integration;
 
@@ -25,16 +21,12 @@ import static org.apache.qpid.jms.provider.amqp.AmqpSupport.OPEN_HOSTNAME;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.PORT;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.arrayContaining;
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.hasEntry;
-import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -71,33 +63,34 @@ import org.apache.qpid.jms.provider.amqp.AmqpSupport;
 import org.apache.qpid.jms.provider.exceptions.ProviderConnectionRedirectedException;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.Wait;
-import org.apache.qpid.jms.test.testpeer.TestAmqpPeer;
 import org.apache.qpid.jms.test.testpeer.basictypes.AmqpError;
 import org.apache.qpid.jms.test.testpeer.basictypes.ConnectionError;
 import org.apache.qpid.jms.test.testpeer.matchers.CoordinatorMatcher;
-import org.apache.qpid.jms.test.testpeer.matchers.sections.TransferPayloadCompositeMatcher;
 import org.apache.qpid.jms.util.MetaDataSupport;
 import org.apache.qpid.jms.util.QpidJMSTestRunner;
 import org.apache.qpid.jms.util.Repeat;
-import org.apache.qpid.proton.amqp.Binary;
-import org.apache.qpid.proton.amqp.Symbol;
 import org.apache.qpid.proton.amqp.UnsignedInteger;
 import org.apache.qpid.proton.amqp.transaction.TxnCapability;
 import org.apache.qpid.proton.engine.impl.AmqpHeader;
+import org.apache.qpid.protonj2.test.driver.ProtonTestServer;
+import org.apache.qpid.protonj2.test.driver.codec.security.SaslCode;
+import org.apache.qpid.protonj2.test.driver.codec.transport.AMQPHeader;
 import org.hamcrest.Matcher;
+import org.hamcrest.Matchers;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(QpidJMSTestRunner.class)
 public class ConnectionIntegrationTest extends QpidJmsTestCase {
-    private final IntegrationTestFixture testFixture = new IntegrationTestFixture();
+
+    private final IntegrationTestFixture2 testFixture = new IntegrationTestFixture2();
 
     @Test(timeout = 20000)
     public void testCreateAndCloseConnection() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
         }
     }
@@ -114,11 +107,11 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     }
 
     private void doConnectionWithUnexpectedHeaderTestImpl(byte[] responseHeader) throws Exception, IOException {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLHeader().respondWithBytes(responseHeader);
+            testPeer.start();
 
-            testPeer.expectHeader(AmqpHeader.SASL_HEADER, responseHeader);
-
-            ConnectionFactory factory = new JmsConnectionFactory("amqp://localhost:" + testPeer.getServerPort());
+            ConnectionFactory factory = new JmsConnectionFactory(testPeer.getServerURI());
             try {
                 factory.createConnection("guest", "guest");
                 fail("Expected connection creation to fail");
@@ -130,99 +123,108 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 20000)
     public void testCloseConnectionTimesOut() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            JmsConnection connection = (JmsConnection) testFixture.establishConnecton(testPeer);
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            final JmsConnection connection = (JmsConnection) testFixture.establishConnecton(testPeer);
             connection.setCloseTimeout(500);
 
-            testPeer.expectClose(false);
+            testPeer.expectClose();
 
             connection.start();
             assertNotNull("Connection should not be null", connection);
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCloseConnectionCompletesWhenConnectionDropsBeforeResponse() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             JmsConnection connection = (JmsConnection) testFixture.establishConnecton(testPeer);
 
-            testPeer.expectClose(false);
+            testPeer.expectClose();
             testPeer.dropAfterLastHandler();
 
             connection.start();
             assertNotNull("Connection should not be null", connection);
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateConnectionWithClientId() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer, false, null, null, null, true);
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateAutoAckSession() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
-            testPeer.expectBegin();
+
+            testPeer.expectBegin().respond();
+            testPeer.expectClose().respond();
+
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             assertNotNull("Session should not be null", session);
-            testPeer.expectClose();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateAutoAckSessionByDefault() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
-            testPeer.expectBegin();
+
+            testPeer.expectBegin().respond();
+            testPeer.expectClose().respond();
+
             Session session = connection.createSession();
             assertNotNull("Session should not be null", session);
-            testPeer.expectClose();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateAutoAckSessionUsingAckModeOnlyMethod() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
-            testPeer.expectBegin();
+
+            testPeer.expectBegin().respond();
+            testPeer.expectClose().respond();
+
             Session session = connection.createSession(Session.AUTO_ACKNOWLEDGE);
             assertNotNull("Session should not be null", session);
-            testPeer.expectClose();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateTransactedSession() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
 
-            testPeer.expectBegin();
             // Expect the session, with an immediate link to the transaction coordinator
             // using a target with the expected capabilities only.
-            CoordinatorMatcher txCoordinatorMatcher = new CoordinatorMatcher();
-            txCoordinatorMatcher.withCapabilities(arrayContaining(TxnCapability.LOCAL_TXN));
-            testPeer.expectSenderAttach(txCoordinatorMatcher, false, false);
+            testPeer.expectBegin().respond();
+            testPeer.expectCoordinatorAttach().ofSender()
+                                              .withCoordinator().withCapabilities(TxnCapability.LOCAL_TXN.toString()).and()
+                                              .respond()
+                                              .withCoordinator().withCapabilities(TxnCapability.LOCAL_TXN.toString());
+            testPeer.remoteFlow().withLinkCredit(2).queue();
 
             // First expect an unsettled 'declare' transfer to the txn coordinator, and
             // reply with a declared disposition state containing the txnId.
-            Binary txnId = new Binary(new byte[]{ (byte) 1, (byte) 2, (byte) 3, (byte) 4});
-            testPeer.expectDeclare(txnId);
-            testPeer.expectDischarge(txnId, true);
-            testPeer.expectClose();
+            final byte[] txnId = new byte[]{ (byte) 1, (byte) 2, (byte) 3, (byte) 4};
+
+            testPeer.expectDeclare().declared(txnId);
+            testPeer.expectDischarge().withTxnId(txnId).accept();
+            testPeer.expectClose().respond();
 
             Session session = connection.createSession(true, Session.SESSION_TRANSACTED);
             assertNotNull("Session should not be null", session);
@@ -233,22 +235,25 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 20000)
     public void testCreateTransactedSessionUsingAckModeOnlyMethod() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
 
-            testPeer.expectBegin();
             // Expect the session, with an immediate link to the transaction coordinator
             // using a target with the expected capabilities only.
-            CoordinatorMatcher txCoordinatorMatcher = new CoordinatorMatcher();
-            txCoordinatorMatcher.withCapabilities(arrayContaining(TxnCapability.LOCAL_TXN));
-            testPeer.expectSenderAttach(txCoordinatorMatcher, false, false);
+            testPeer.expectBegin().respond();
+            testPeer.expectCoordinatorAttach().ofSender()
+                                              .withCoordinator().withCapabilities(TxnCapability.LOCAL_TXN.toString()).and()
+                                              .respond()
+                                              .withCoordinator().withCapabilities(TxnCapability.LOCAL_TXN.toString());
+            testPeer.remoteFlow().withLinkCredit(2).queue();
 
             // First expect an unsettled 'declare' transfer to the txn coordinator, and
             // reply with a declared disposition state containing the txnId.
-            Binary txnId = new Binary(new byte[]{ (byte) 1, (byte) 2, (byte) 3, (byte) 4});
-            testPeer.expectDeclare(txnId);
-            testPeer.expectDischarge(txnId, true);
-            testPeer.expectClose();
+            final byte[] txnId = new byte[]{ (byte) 1, (byte) 2, (byte) 3, (byte) 4};
+
+            testPeer.expectDeclare().declared(txnId);
+            testPeer.expectDischarge().withTxnId(txnId).accept();
+            testPeer.expectClose().respond();
 
             Session session = connection.createSession(Session.SESSION_TRANSACTED);
             assertNotNull("Session should not be null", session);
@@ -259,19 +264,20 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 20000)
     public void testCreateTransactedSessionFailsWhenNoDetachResponseSent() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             ((JmsConnection) connection).setRequestTimeout(500);
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
             // Expect the session, with an immediate link to the transaction coordinator
             // using a target with the expected capabilities only.
             CoordinatorMatcher txCoordinatorMatcher = new CoordinatorMatcher();
             txCoordinatorMatcher.withCapabilities(arrayContaining(TxnCapability.LOCAL_TXN));
-            testPeer.expectSenderAttach(notNullValue(), txCoordinatorMatcher, true, true, false, 0, null, null);
-            testPeer.expectDetach(true, false, false);
+            testPeer.expectCoordinatorAttach().ofSender().reject(true, AmqpError.INTERNAL_ERROR.toString(), "error");
+            testPeer.expectDetach().withClosed(true);
             // Expect the AMQP session to be closed due to the JMS session creation failure.
-            testPeer.expectEnd();
+            testPeer.expectEnd().respond();
+            testPeer.expectClose().respond();
 
             try {
                 connection.createSession(true, Session.SESSION_TRANSACTED);
@@ -280,10 +286,9 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
                 // Expected
             }
 
-            testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -291,12 +296,13 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     public void testRemotelyCloseConnectionDuringSessionCreation() throws Exception {
         final String BREAD_CRUMB = "ErrorMessageBreadCrumb";
 
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
 
             // Expect the begin, then explicitly close the connection with an error
-            testPeer.expectBegin(notNullValue(), false);
-            testPeer.remotelyCloseConnection(true, AmqpError.NOT_ALLOWED, BREAD_CRUMB);
+            testPeer.expectBegin();
+            testPeer.remoteClose().withErrorCondition(AmqpError.NOT_ALLOWED.toString(), BREAD_CRUMB).queue();
+            testPeer.expectClose();
 
             try {
                 connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -307,7 +313,7 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
                 assertTrue("Expected breadcrumb to be present in message", jmse.getMessage().contains(BREAD_CRUMB));
             }
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
 
             connection.close();
         }
@@ -315,11 +321,11 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 20000)
     public void testRemotelyDropConnectionDuringSessionCreation() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
 
             // Expect the begin, then drop connection without without a close frame.
-            testPeer.expectBegin(notNullValue(), false);
+            testPeer.expectBegin();
             testPeer.dropAfterLastHandler();
 
             try {
@@ -329,7 +335,7 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
                 // Expected
             }
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
 
             connection.close();
         }
@@ -338,12 +344,13 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     @Repeat(repetitions = 1)
     @Test(timeout = 20000)
     public void testRemotelyDropConnectionDuringSessionCreationTransacted() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen();
-            testPeer.expectBegin();
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().respond();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
-            ConnectionFactory factory = new JmsConnectionFactory("amqp://localhost:" + testPeer.getServerPort() + "?jms.clientID=foo");
+            ConnectionFactory factory = new JmsConnectionFactory(testPeer.getServerURI().toString() + "?jms.clientID=foo");
             Connection connection = factory.createConnection();
 
             CountDownLatch exceptionListenerFired = new CountDownLatch(1);
@@ -362,7 +369,7 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
             assertTrue("Exception listener did not fire", exceptionListenerFired.await(5, TimeUnit.SECONDS));
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
 
             connection.close();
         }
@@ -370,53 +377,55 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 20000)
     public void testConnectionPropertiesContainExpectedMetaData() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
 
-            Matcher<?> connPropsMatcher = allOf(hasEntry(AmqpSupport.PRODUCT, MetaDataSupport.PROVIDER_NAME),
-                    hasEntry(AmqpSupport.VERSION, MetaDataSupport.PROVIDER_VERSION),
-                    hasEntry(AmqpSupport.PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
+            Map<String, Object> expectedProperties = new HashMap<>();
+            expectedProperties.put(AmqpSupport.PRODUCT.toString(), MetaDataSupport.PROVIDER_NAME);
+            expectedProperties.put(AmqpSupport.VERSION.toString(), MetaDataSupport.PROVIDER_VERSION);
+            expectedProperties.put(AmqpSupport.PLATFORM.toString(), MetaDataSupport.PLATFORM_DETAILS);
 
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen(connPropsMatcher, null, false);
-            testPeer.expectBegin();
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().withProperties(expectedProperties).respond();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
-            ConnectionFactory factory = new JmsConnectionFactory("amqp://localhost:" + testPeer.getServerPort() + "?jms.clientID=foo");
+            ConnectionFactory factory = new JmsConnectionFactory(testPeer.getServerURI() + "?jms.clientID=foo");
             Connection connection = factory.createConnection();
 
-            testPeer.waitForAllHandlersToComplete(1000);
-            assertNull(testPeer.getThrowable());
+            testPeer.waitForScriptToComplete(1000);
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testMaxFrameSizeOptionCommunicatedInOpen() throws Exception {
-        int frameSize = 39215;
-        doMaxFrameSizeOptionTestImpl(frameSize, UnsignedInteger.valueOf(frameSize));
+        final int frameSize = 39215;
+
+        doMaxFrameSizeOptionTestImpl(frameSize, frameSize);
     }
 
     @Test(timeout = 20000)
     public void testMaxFrameSizeOptionCommunicatedInOpenDefault() throws Exception {
-        doMaxFrameSizeOptionTestImpl(-1, UnsignedInteger.MAX_VALUE);
+        doMaxFrameSizeOptionTestImpl(-1, UnsignedInteger.MAX_VALUE.longValue());
     }
 
-    private void doMaxFrameSizeOptionTestImpl(int uriOption, UnsignedInteger transmittedValue) throws JMSException, InterruptedException, Exception, IOException {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            testPeer.expectSaslLayerDisabledConnect(equalTo(transmittedValue));
-            // Each connection creates a session for managing temporary destinations etc
-            testPeer.expectBegin();
+    private void doMaxFrameSizeOptionTestImpl(int uriOption, long transmittedValue) throws JMSException, InterruptedException, Exception, IOException {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectAMQPHeader().respondWithAMQPHeader();
+            testPeer.expectOpen().withMaxFrameSize(transmittedValue).respond();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
-            String uri = "amqp://localhost:" + testPeer.getServerPort() + "?amqp.saslLayer=false&amqp.maxFrameSize=" + uriOption;
+            String uri = testPeer.getServerURI().toString() + "?amqp.saslLayer=false&amqp.maxFrameSize=" + uriOption;
             ConnectionFactory factory = new JmsConnectionFactory(uri);
             Connection connection = factory.createConnection();
             connection.start();
 
-            testPeer.waitForAllHandlersToComplete(3000);
-            assertNull(testPeer.getThrowable());
+            testPeer.waitForScriptToComplete(3000);
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
         }
     }
@@ -428,28 +437,30 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     }
 
     private void doMaxFrameSizeInfluencesOutgoingFrameSizeTestImpl(int frameSize, int bytesPayloadSize, int numFrames) throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            testPeer.expectSaslLayerDisabledConnect(equalTo(UnsignedInteger.valueOf(frameSize)));
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectAMQPHeader().respondWithAMQPHeader();
+            testPeer.expectOpen().withMaxFrameSize(frameSize).respond();
             // Each connection creates a session for managing temporary destinations etc
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofSender().respond();
+            testPeer.remoteFlow().withLinkCredit(1).queue();
+            testPeer.start();
 
-            String uri = "amqp://localhost:" + testPeer.getServerPort() + "?amqp.saslLayer=false&amqp.maxFrameSize=" + frameSize;
+            String uri = testPeer.getServerURI().toString() + "?amqp.saslLayer=false&amqp.maxFrameSize=" + frameSize;
+
             ConnectionFactory factory = new JmsConnectionFactory(uri);
             Connection connection = factory.createConnection();
-
-            testPeer.expectBegin();
-            testPeer.expectSenderAttach();
-
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             Queue queue = session.createQueue("myQueue");
             MessageProducer producer = session.createProducer(queue);
 
             // Expect n-1 transfers of maxFrameSize
             for (int i = 1; i < numFrames; i++) {
-                testPeer.expectTransfer(frameSize);
+                testPeer.expectTransfer().withMore(true).withFrameSize(frameSize);
             }
             // Plus one more of unknown size (framing overhead).
-            testPeer.expectTransfer(0);
+            testPeer.expectTransfer().withMore(Matchers.oneOf(null, false)).accept();
 
             // Send the message
             byte[] orig = createBytePyload(bytesPayloadSize);
@@ -458,10 +469,10 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
             producer.send(message);
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
@@ -493,14 +504,15 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     }
 
     private void doAmqpHostnameTestImpl(String amqpHostname, boolean setHostnameOption, Matcher<?> hostnameMatcher) throws JMSException, InterruptedException, Exception, IOException {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen(null, hostnameMatcher, false);
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().withHostname(hostnameMatcher).respond();
             // Each connection creates a session for managing temporary destinations etc
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
-            String uri = "amqp://localhost:" + testPeer.getServerPort();
-            if(setHostnameOption) {
+            String uri = testPeer.getServerURI().toString();
+            if (setHostnameOption) {
                 uri += "?amqp.vhost=" + amqpHostname;
             }
 
@@ -509,24 +521,23 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             // Set a clientID to provoke the actual AMQP connection process to occur.
             connection.setClientID("clientName");
 
-            testPeer.waitForAllHandlersToComplete(1000);
-            assertNull(testPeer.getThrowable());
-
-            testPeer.expectClose();
+            testPeer.waitForScriptToComplete(1000);
+            testPeer.expectClose().respond();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testRemotelyEndConnectionListenerInvoked() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             final CountDownLatch done = new CountDownLatch(1);
 
             // Don't set a ClientId, so that the underlying AMQP connection isn't established yet
             Connection connection = testFixture.establishConnecton(testPeer, false, null, null, null, false);
 
             // Tell the test peer to close the connection when executing its last handler
-            testPeer.remotelyCloseConnection(true);
+            testPeer.remoteClose().queue();
+            testPeer.expectClose();
 
             // Add the exception listener
             connection.setExceptionListener(new ExceptionListener() {
@@ -542,7 +553,7 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
             assertTrue("Connection should report failure", done.await(5, TimeUnit.SECONDS));
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
 
             connection.close();
         }
@@ -550,7 +561,7 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 20000)
     public void testRemotelyEndConnectionWithRedirect() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             final CountDownLatch done = new CountDownLatch(1);
             final AtomicReference<JMSException> asyncError = new AtomicReference<JMSException>();
 
@@ -562,12 +573,13 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             Connection connection = testFixture.establishConnecton(testPeer, false, null, null, null, false);
 
             // Tell the test peer to close the connection when executing its last handler
-            Map<Symbol, Object> errorInfo = new HashMap<Symbol, Object>();
-            errorInfo.put(OPEN_HOSTNAME, redirectVhost);
-            errorInfo.put(NETWORK_HOST, redirectNetworkHost);
-            errorInfo.put(PORT, 5677);
+            Map<String, Object> errorInfo = new HashMap<>();
+            errorInfo.put(OPEN_HOSTNAME.toString(), redirectVhost);
+            errorInfo.put(NETWORK_HOST.toString(), redirectNetworkHost);
+            errorInfo.put(PORT.toString(), 5677);
 
-            testPeer.remotelyCloseConnection(true, ConnectionError.REDIRECT, "Connection redirected", errorInfo);
+            testPeer.remoteClose().withErrorCondition(ConnectionError.REDIRECT.toString(), "Connection redirected", errorInfo).queue();
+            testPeer.expectClose();
 
             // Add the exception listener
             connection.setExceptionListener(new ExceptionListener() {
@@ -595,7 +607,7 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             assertEquals(redirectNetworkHost, redirectionURI.getHost());
             assertEquals(redirectPort, redirectionURI.getPort());
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
 
             connection.close();
         }
@@ -605,21 +617,23 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     public void testRemotelyEndConnectionWithSessionWithConsumer() throws Exception {
         final String BREAD_CRUMB = "ErrorMessage";
 
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             final Connection connection = testFixture.establishConnecton(testPeer);
 
-            testPeer.expectBegin();
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            testPeer.expectBegin().respond();
 
             // Create a consumer, then remotely end the connection afterwards.
-            testPeer.expectReceiverAttach();
-            testPeer.expectLinkFlow();
-            testPeer.remotelyCloseConnection(true, AmqpError.RESOURCE_LIMIT_EXCEEDED, BREAD_CRUMB);
+            testPeer.expectAttach().ofReceiver().respond();
+            testPeer.expectFlow();
+            testPeer.remoteClose().withErrorCondition(AmqpError.RESOURCE_LIMIT_EXCEEDED.toString(), BREAD_CRUMB).queue();
+            testPeer.expectClose();
+            testPeer.start();
 
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             Queue queue = session.createQueue("myQueue");
             MessageConsumer consumer = session.createConsumer(queue);
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
             assertTrue("connection never closed.", Wait.waitFor(new Wait.Condition() {
                 @Override
                 public boolean isSatisfied() throws Exception {
@@ -661,6 +675,8 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             consumer.close();
             session.close();
             connection.close();
+
+            testPeer.waitForScriptToComplete(10);
         }
     }
 
@@ -668,22 +684,20 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     public void  testRemotelyEndConnectionWithSessionWithProducerWithSendWaitingOnCredit() throws Exception {
         final String BREAD_CRUMB = "ErrorMessageBreadCrumb";
 
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
 
-            testPeer.expectBegin();
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
+            testPeer.expectBegin().respond();
             // Expect producer creation, don't give it credit.
-            testPeer.expectSenderAttachWithoutGrantingCredit();
-
+            testPeer.expectAttach().ofSender().respond();
             // Producer has no credit so the send should block waiting for it.
-            testPeer.remotelyCloseConnection(true, AmqpError.RESOURCE_LIMIT_EXCEEDED, BREAD_CRUMB, 50);
+            testPeer.remoteClose().withErrorCondition(AmqpError.RESOURCE_LIMIT_EXCEEDED.toString(), BREAD_CRUMB).queue().afterDelay(50);
+            testPeer.expectClose();
 
-            Queue queue = session.createQueue("myQueue");
+            final Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            final Queue queue = session.createQueue("myQueue");
             final MessageProducer producer = session.createProducer(queue);
-
-            Message message = session.createTextMessage("myMessage");
+            final Message message = session.createTextMessage("myMessage");
 
             try {
                 producer.send(message);
@@ -698,7 +712,7 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
@@ -706,19 +720,20 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     public void  testRemotelyEndConnectionWithSessionWithProducerWithSendWaitingOnOutcome() throws Exception {
         final String BREAD_CRUMB = "ErrorMessageBreadCrumb";
 
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            Connection connection = testFixture.establishConnecton(testPeer);
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            final Connection connection = testFixture.establishConnecton(testPeer);
 
-            testPeer.expectBegin();
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
+            testPeer.expectBegin().respond();
             // Expect producer creation, and a message to be sent, but don't return a disposition.
             // Instead, close the connection.
-            testPeer.expectSenderAttach();
-            testPeer.expectTransferButDoNotRespond(new TransferPayloadCompositeMatcher());
-            testPeer.remotelyCloseConnection(true, ConnectionError.CONNECTION_FORCED, BREAD_CRUMB, 50);
+            testPeer.expectAttach().ofSender().respond();
+            testPeer.remoteFlow().withLinkCredit(10).queue();
+            testPeer.expectTransfer();
+            testPeer.remoteClose().withErrorCondition(ConnectionError.CONNECTION_FORCED.toString(), BREAD_CRUMB).queue().afterDelay(50);
+            testPeer.expectClose();
 
-            Queue queue = session.createQueue("myQueue");
+            final Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            final Queue queue = session.createQueue("myQueue");
             final MessageProducer producer = session.createProducer(queue);
 
             Message message = session.createTextMessage("myMessage");
@@ -736,37 +751,41 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateConnectionWithServerSendingPreemptiveData() throws Exception {
-        boolean sendServerSaslHeaderPreEmptively = true;
-        try (TestAmqpPeer testPeer = new TestAmqpPeer(null, false, sendServerSaslHeaderPreEmptively);) {
-            // Don't use test fixture, handle the connection directly to control sasl behaviour
-            testPeer.expectSaslAnonymousWithPreEmptiveServerHeader();
-            testPeer.expectOpen();
-            testPeer.expectBegin();
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.remoteHeader(AMQPHeader.getSASLHeader()).queue();
+            testPeer.remoteSaslMechanisms().withMechanisms("ANONYMOUS").queue();
+            testPeer.expectSASLHeader();
+            testPeer.expectSaslInit().withMechanism("ANONYMOUS");
+            testPeer.remoteSaslOutcome().withCode(SaslCode.OK).queue();
+            testPeer.expectAMQPHeader().respondWithAMQPHeader();
+            testPeer.expectOpen().respond();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
-            JmsConnectionFactory factory = new JmsConnectionFactory("amqp://localhost:" + testPeer.getServerPort());
+            JmsConnectionFactory factory = new JmsConnectionFactory(testPeer.getServerURI());
             Connection connection = factory.createConnection();
             connection.start();
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testDontAwaitClientIDBeforeOpen() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().respond();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
-            String uri = "amqp://localhost:" + testPeer.getServerPort() + "?jms.awaitClientID=false";
-
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen();
-            testPeer.expectBegin();
+            String uri = testPeer.getServerURI().toString() + "?jms.awaitClientID=false";
 
             ConnectionFactory factory = new JmsConnectionFactory(uri);
             Connection connection = factory.createConnection();
@@ -774,12 +793,12 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             // Verify that all handlers complete, i.e. the awaitClientID=false option
             // setting was effective in provoking the AMQP Open immediately even
             // though it has no ClientID and we haven't used the Connection.
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -794,19 +813,18 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     }
 
     private void doTestWaitForClientIDDoesNotOpenUntilPrompted(boolean setClientID) throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.start();
 
-            String uri = "amqp://localhost:" + testPeer.getServerPort() + "?jms.awaitClientID=true";
-
-            testPeer.expectSaslAnonymous();
-
+            String uri = testPeer.getServerURI().toString() + "?jms.awaitClientID=true";
             ConnectionFactory factory = new JmsConnectionFactory(uri);
             Connection connection = factory.createConnection();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
 
-            testPeer.expectOpen();
-            testPeer.expectBegin();
+            testPeer.expectOpen().respond();
+            testPeer.expectBegin().respond();
 
             if (setClientID) {
                 connection.setClientID("client-id");
@@ -814,10 +832,10 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
                 connection.start();
             }
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(2000);
+            testPeer.waitForScriptToComplete(2000);
         }
     }
 
@@ -829,16 +847,17 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
     }
 
     private void doUseDaemonThreadTestImpl(Boolean useDaemonThread) throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().respond();
+            testPeer.expectBegin().respond();
+            testPeer.expectClose().respond();
+            testPeer.start();
 
-            String remoteURI = "amqp://localhost:" + testPeer.getServerPort();
+            String remoteURI = testPeer.getServerURI().toString();
             if (useDaemonThread != null) {
                 remoteURI += "?jms.useDaemonThread=" + useDaemonThread;
             }
-
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen();
-            testPeer.expectBegin();
 
             final CountDownLatch connectionEstablished = new CountDownLatch(1);
             final AtomicBoolean daemonThread = new AtomicBoolean(false);
@@ -860,10 +879,9 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
             assertTrue("Connection established callback didn't trigger", connectionEstablished.await(5, TimeUnit.SECONDS));
 
-            testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(2000);
+            testPeer.waitForScriptToComplete(2000);
 
             if (useDaemonThread == null) {
                 // Expect default to be false when not configured
@@ -877,59 +895,61 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
 
     @Test(timeout = 20000)
     public void testConnectionWithPreemptiveServerOpen() throws Exception {
-
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLHeader().respondWithSASLPHeader();
+            testPeer.remoteSaslMechanisms().withMechanisms("ANONYMOUS").queue();
+            testPeer.expectSaslInit().withMechanism("ANONYMOUS");
+            testPeer.remoteSaslOutcome().withCode(SaslCode.OK).queue();
+            testPeer.remoteHeader(AMQPHeader.getAMQPHeader()).queue();
+            testPeer.remoteOpen().queue();
+            // Then expect the clients header to arrive, but defer responding since the servers was already sent.
+            testPeer.expectAMQPHeader();
+            // Then expect the clients Open frame to arrive, but defer responding since the servers was already sent
+            // before the clients AMQP connection open is provoked.
+            testPeer.expectOpen().withContainerId("client-id");
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
             // Ensure the Connection awaits a ClientID being set or not, giving time for the preemptive server Open
-            String uri = "amqp://localhost:" + testPeer.getServerPort() + "?jms.awaitClientID=true";
-
-            testPeer.expectSaslAnonymousWithServerAmqpHeaderSentPreemptively();
-            testPeer.sendPreemptiveServerAmqpHeader();
-            testPeer.sendPreemptiveServerOpenFrame();
-            // Then expect the clients header to arrive, but defer responding since the servers was already sent.
-            testPeer.expectHeader(AmqpHeader.HEADER, null);
+            final String uri = testPeer.getServerURI().toString() + "?jms.awaitClientID=true";
 
             ConnectionFactory factory = new JmsConnectionFactory(uri);
             Connection connection = factory.createConnection();
-
-            // Then expect the clients Open frame to arrive, but defer responding since the servers was already sent
-            // before the clients AMQP connection open is provoked.
-            testPeer.expectOpen(null, null, true);
-            testPeer.expectBegin();
 
             Thread.sleep(10); // Gives a little more time for the preemptive Open to actually arrive.
 
             // Use the connection to provoke the Open
             connection.setClientID("client-id");
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(2000);
+            testPeer.waitForScriptToComplete(2000);
         }
     }
 
     @Test(timeout = 20000)
     public void testConnectionPropertiesExtensionAddedValues() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             final String property1 = "property1";
             final String property2 = "property2";
 
             final String value1 = UUID.randomUUID().toString();
             final String value2 = UUID.randomUUID().toString();
 
-            Matcher<?> connPropsMatcher = allOf(
-                    hasEntry(Symbol.valueOf(property1), value1),
-                    hasEntry(Symbol.valueOf(property2), value2),
-                    hasEntry(AmqpSupport.PRODUCT, MetaDataSupport.PROVIDER_NAME),
-                    hasEntry(AmqpSupport.VERSION, MetaDataSupport.PROVIDER_VERSION),
-                    hasEntry(AmqpSupport.PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
+            final Map<String, Object> expectedProperties = new HashMap<>();
+            expectedProperties.put(property1, value1);
+            expectedProperties.put(property2, value2);
+            expectedProperties.put(AmqpSupport.PRODUCT.toString(), MetaDataSupport.PROVIDER_NAME);
+            expectedProperties.put(AmqpSupport.VERSION.toString(), MetaDataSupport.PROVIDER_VERSION);
+            expectedProperties.put(AmqpSupport.PLATFORM.toString(), MetaDataSupport.PLATFORM_DETAILS);
 
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen(connPropsMatcher, null, false);
-            testPeer.expectBegin();
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().withProperties(expectedProperties).respond();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
-            final URI remoteURI = new URI("amqp://localhost:" + testPeer.getServerPort());
+            final URI remoteURI = testPeer.getServerURI();
 
             JmsConnectionFactory factory = new JmsConnectionFactory(remoteURI);
 
@@ -945,32 +965,36 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             Connection connection = factory.createConnection();
             connection.start();
 
-            testPeer.waitForAllHandlersToComplete(1000);
-            assertNull(testPeer.getThrowable());
+            testPeer.waitForScriptToComplete(1000);
+            testPeer.expectClose().respond();
 
-            testPeer.expectClose();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testConnectionPropertiesExtensionAddedValuesOfNonString() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             final String property1 = "property1";
             final String property2 = "property2";
 
             final UUID value1 = UUID.randomUUID();
             final UUID value2 = UUID.randomUUID();
 
-            Matcher<?> connPropsMatcher = allOf(
-                    hasEntry(Symbol.valueOf(property1), value1),
-                    hasEntry(Symbol.valueOf(property2), value2));
+            final Map<String, Object> expectedProperties = new HashMap<>();
 
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen(connPropsMatcher, null, false);
-            testPeer.expectBegin();
+            expectedProperties.put(property1, value1);
+            expectedProperties.put(property2, value2);
+            expectedProperties.put(AmqpSupport.PRODUCT.toString(), MetaDataSupport.PROVIDER_NAME);
+            expectedProperties.put(AmqpSupport.VERSION.toString(), MetaDataSupport.PROVIDER_VERSION);
+            expectedProperties.put(AmqpSupport.PLATFORM.toString(), MetaDataSupport.PLATFORM_DETAILS);
 
-            final URI remoteURI = new URI("amqp://localhost:" + testPeer.getServerPort());
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().withProperties(expectedProperties).respond();
+            testPeer.expectBegin().respond();
+            testPeer.start();
+
+            final URI remoteURI = testPeer.getServerURI();
 
             JmsConnectionFactory factory = new JmsConnectionFactory(remoteURI);
 
@@ -986,26 +1010,27 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             Connection connection = factory.createConnection();
             connection.start();
 
-            testPeer.waitForAllHandlersToComplete(1000);
-            testPeer.expectClose();
+            testPeer.waitForScriptToComplete(1000);
+            testPeer.expectClose().respond();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testConnectionPropertiesExtensionProtectsClientProperties() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
 
-            Matcher<?> connPropsMatcher = allOf(
-                    hasEntry(AmqpSupport.PRODUCT, MetaDataSupport.PROVIDER_NAME),
-                    hasEntry(AmqpSupport.VERSION, MetaDataSupport.PROVIDER_VERSION),
-                    hasEntry(AmqpSupport.PLATFORM, MetaDataSupport.PLATFORM_DETAILS));
+            final Map<String, Object> expectedProperties = new HashMap<>();
+            expectedProperties.put(AmqpSupport.PRODUCT.toString(), MetaDataSupport.PROVIDER_NAME);
+            expectedProperties.put(AmqpSupport.VERSION.toString(), MetaDataSupport.PROVIDER_VERSION);
+            expectedProperties.put(AmqpSupport.PLATFORM.toString(), MetaDataSupport.PLATFORM_DETAILS);
 
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen(connPropsMatcher, null, false);
-            testPeer.expectBegin();
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().withProperties(expectedProperties).respond();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
-            final URI remoteURI = new URI("amqp://localhost:" + testPeer.getServerPort());
+            final URI remoteURI = testPeer.getServerURI();
 
             JmsConnectionFactory factory = new JmsConnectionFactory(remoteURI);
 
@@ -1022,20 +1047,19 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
             Connection connection = factory.createConnection();
             connection.start();
 
-            testPeer.waitForAllHandlersToComplete(1000);
-            testPeer.expectClose();
+            testPeer.waitForScriptToComplete(1000);
+            testPeer.expectClose().respond();
             connection.close();
         }
     }
 
     @Test(timeout = 20000)
     public void testConnectionFailsWhenUserSuppliesIllegalProperties() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.start();
 
-            testPeer.setSuppressReadExceptionOnClose(true);
-            testPeer.expectSaslAnonymous();
-
-            final URI remoteURI = new URI("amqp://localhost:" + testPeer.getServerPort());
+            final URI remoteURI = testPeer.getServerURI();
 
             JmsConnectionFactory factory = new JmsConnectionFactory(remoteURI);
 
@@ -1057,31 +1081,33 @@ public class ConnectionIntegrationTest extends QpidJmsTestCase {
                 fail("Caught unexpected error from connnection.start() : " + unexpected);
             }
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Ignore("Disabled due to requirement of hard coded port")
     @Test(timeout = 20000)
     public void testLocalPortOption() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            testPeer.expectSaslAnonymous();
-            testPeer.expectOpen();
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            testPeer.expectSASLAnonymousConnect();
+            testPeer.expectOpen().respond();
             // Each connection creates a session for managing temporary destinations etc
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
+            testPeer.start();
 
             int localPort = 5671;
-            String uri = "amqp://localhost:" + testPeer.getServerPort() + "?transport.localPort=" + localPort;
+            String uri = testPeer.getServerURI().toString() + "?transport.localPort=" + localPort;
             ConnectionFactory factory = new JmsConnectionFactory(uri);
             Connection connection = factory.createConnection();
             connection.start();
 
-            testPeer.waitForAllHandlersToComplete(2000);
+            testPeer.waitForScriptToComplete(2000);
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            int clientPort = testPeer.getClientSocket().getPort();
+            final int clientPort = testPeer.getConnectionRemotePort();
+
             assertEquals(localPort, clientPort);
         }
     }

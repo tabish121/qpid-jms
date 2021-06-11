@@ -96,6 +96,9 @@ import org.apache.qpid.proton.amqp.UnsignedInteger;
 import org.apache.qpid.proton.amqp.UnsignedLong;
 import org.apache.qpid.proton.amqp.messaging.Modified;
 import org.apache.qpid.proton.amqp.messaging.Released;
+import org.apache.qpid.protonj2.test.driver.ProtonTestServer;
+import org.apache.qpid.protonj2.test.driver.matchers.messaging.HeaderMatcher;
+import org.apache.qpid.protonj2.test.driver.matchers.messaging.MessageAnnotationsMatcher;
 import org.hamcrest.Matcher;
 import org.hamcrest.Matchers;
 import org.junit.Test;
@@ -110,17 +113,17 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
     private static final int INDIVIDUAL_ACK = 101;
 
-    private final IntegrationTestFixture testFixture = new IntegrationTestFixture();
+    private final IntegrationTestFixture2 testFixture = new IntegrationTestFixture2();
 
     @Test(timeout = 20000)
     public void testCloseSession() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             assertNotNull("Session should not be null", session);
-            testPeer.expectEnd();
-            testPeer.expectClose();
+            testPeer.expectEnd().respond();
+            testPeer.expectClose().respond();
 
             session.close();
 
@@ -129,19 +132,19 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCloseSessionTimesOut() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             JmsConnection connection = (JmsConnection) testFixture.establishConnecton(testPeer);
             connection.setCloseTimeout(500);
 
-            testPeer.expectBegin();
-            testPeer.expectEnd(false);
-            testPeer.expectClose();
+            testPeer.expectBegin().respond();
+            testPeer.expectEnd();
+            testPeer.expectClose().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             assertNotNull("Session should not be null", session);
@@ -155,103 +158,97 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateProducer() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
-            testPeer.expectSenderAttach();
-            testPeer.expectClose();
+            testPeer.expectAttach().ofSender().respond();
+            testPeer.remoteFlow().withLinkCredit(10).queue();
+            testPeer.expectClose().respond();
 
             Queue queue = session.createQueue("myQueue");
             session.createProducer(queue);
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateProducerLinkSupportedSourceOutcomes() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
-            String queueName = "myQueue";
+            final String queueName = "myQueue";
 
-            SourceMatcher sourceMatcher = new SourceMatcher();
-            sourceMatcher.withOutcomes(arrayContaining(Accepted.DESCRIPTOR_SYMBOL, Rejected.DESCRIPTOR_SYMBOL, Released.DESCRIPTOR_SYMBOL, Modified.DESCRIPTOR_SYMBOL));
-            //TODO: what default outcome for producers?
-            //Accepted normally, Rejected for transaction controller?
-            //sourceMatcher.withDefaultOutcome(outcomeMatcher);
-
-            TargetMatcher targetMatcher = new TargetMatcher();
-            targetMatcher.withAddress(equalTo(queueName));
-
-            testPeer.expectSenderAttach(sourceMatcher, targetMatcher, false, false);
-            testPeer.expectClose();
+            testPeer.expectAttach().ofSender().withSource()
+                                              .withOutcomes(Accepted.DESCRIPTOR_SYMBOL.toString(),
+                                                            Rejected.DESCRIPTOR_SYMBOL.toString(),
+                                                            Released.DESCRIPTOR_SYMBOL.toString(),
+                                                            Modified.DESCRIPTOR_SYMBOL.toString())
+                                              .also()
+                                              .withTarget().withAddress(queueName)
+                                              .and().respond();
+            testPeer.expectClose().respond();
 
             Queue queue = session.createQueue(queueName);
             session.createProducer(queue);
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateConsumer() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
-            testPeer.expectReceiverAttach();
-            testPeer.expectLinkFlow();
-            testPeer.expectClose();
+            testPeer.expectAttach().ofReceiver().withSource().withAddress("myQueue").and().respond();
+            testPeer.expectFlow();
+            testPeer.expectClose().respond();
 
             Queue queue = session.createQueue("myQueue");
             session.createConsumer(queue);
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateConsumerWithEmptySelector() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofReceiver().withName(notNullValue()).withSource().withFilter(nullValue()).and().respond();
+            testPeer.expectFlow();
+            testPeer.expectAttach().ofReceiver().withName(notNullValue()).withSource().withFilter(nullValue()).and().respond();
+            testPeer.expectFlow();
+            testPeer.expectClose().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
-            SourceMatcher sourceMatcher = new SourceMatcher();
-            sourceMatcher.withFilter(nullValue());
-
-            testPeer.expectReceiverAttach(notNullValue(), sourceMatcher);
-            testPeer.expectLinkFlow();
-            testPeer.expectReceiverAttach(notNullValue(), sourceMatcher);
-            testPeer.expectLinkFlow();
-            testPeer.expectClose();
-
             Queue queue = session.createQueue("myQueue");
             MessageConsumer consumer = session.createConsumer(queue, "");
             assertNull(consumer.getMessageSelector());
@@ -260,29 +257,24 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateConsumerWithNullSelector() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofReceiver().withName(notNullValue()).withSource().withFilter(nullValue()).and().respond();
+            testPeer.expectFlow();
+            testPeer.expectAttach().ofReceiver().withName(notNullValue()).withSource().withFilter(nullValue()).and().respond();
+            testPeer.expectFlow();
+            testPeer.expectClose().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
-            SourceMatcher sourceMatcher = new SourceMatcher();
-            sourceMatcher.withFilter(nullValue());
-
-            testPeer.expectReceiverAttach(notNullValue(), sourceMatcher);
-            testPeer.expectLinkFlow();
-            testPeer.expectReceiverAttach(notNullValue(), sourceMatcher);
-            testPeer.expectLinkFlow();
-            testPeer.expectClose();
-
             Queue queue = session.createQueue("myQueue");
             MessageConsumer consumer = session.createConsumer(queue, null);
             assertNull(consumer.getMessageSelector());
@@ -291,17 +283,17 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateConsumerWithInvalidSelector() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
             Topic destination = session.createTopic(getTestName());
@@ -313,10 +305,10 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                 // Expected
             }
 
-            testPeer.expectClose();
+            testPeer.expectClose().respond();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -338,16 +330,19 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
     }
 
     private void doCreateConsumerWithSelectorTestImpl(String messageSelector, boolean disableValidation) throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             String options = null;
-            if(disableValidation) {
+            if (disableValidation) {
                 options = "jms.validateSelector=false";
             }
 
             Connection connection = testFixture.establishConnecton(testPeer, options);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofReceiver().withName(notNullValue()).withSource().withFilter(nullValue()).and().respond();
+            testPeer.expectFlow();
+            testPeer.expectClose().respond();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
@@ -366,7 +361,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
@@ -412,7 +407,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -453,7 +448,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -489,7 +484,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -543,7 +538,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -567,7 +562,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -594,7 +589,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -618,7 +613,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -650,7 +645,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -674,7 +669,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -701,7 +696,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -725,7 +720,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -757,7 +752,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -791,7 +786,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -825,7 +820,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -863,7 +858,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -901,7 +896,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -985,24 +980,26 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testConsumerNotAuthorized() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            final String topicName = "myTopic";
+
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofReceiver().withName(notNullValue())
+                                   .reject(true, AmqpError.UNAUTHORIZED_ACCESS.toString(), "Destination is not readable");
+            testPeer.expectDetach().withClosed(true);
+            testPeer.expectClose().respond();
+
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
-            String topicName = "myTopic";
             Topic destination = session.createTopic(topicName);
-
-            testPeer.expectReceiverAttach(notNullValue(), notNullValue(), false, true, false, false, AmqpError.UNAUTHORIZED_ACCESS, "Destination is not readable");
-            testPeer.expectDetach(true, true, true);
 
             try {
                 session.createConsumer(destination);
@@ -1010,27 +1007,28 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             } catch (JMSSecurityException jmsse) {
             }
 
-            testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testProducerNotAuthorized() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             Connection connection = testFixture.establishConnecton(testPeer);
             connection.start();
 
-            testPeer.expectBegin();
+            final String topicName = "myTopic";
+
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofSender().withName(notNullValue())
+                                   .reject(true, AmqpError.UNAUTHORIZED_ACCESS.toString(), "Destination is not readable");
+            testPeer.expectDetach().withClosed(true);
+            testPeer.expectClose().respond();
+
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
-            String topicName = "myTopic";
             Topic destination = session.createTopic(topicName);
-
-            testPeer.expectSenderAttach(notNullValue(), notNullValue(), true, false, true, 0L, AmqpError.UNAUTHORIZED_ACCESS, "Destination is not readable");
-            testPeer.expectDetach(true, true, true);
 
             try {
                 session.createProducer(destination);
@@ -1038,10 +1036,9 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             } catch (JMSSecurityException jmsse) {
             }
 
-            testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1104,40 +1101,37 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateAnonymousProducerTargetContainsNoTypeCapabilityWhenAnonymousRelayNodeIsSupported() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
 
             //Add capability to indicate support for ANONYMOUS-RELAY
-            Symbol[] serverCapabilities = new Symbol[]{ANONYMOUS_RELAY};
+            String[] serverCapabilities = new String[] { ANONYMOUS_RELAY.toString() };
 
             Connection connection = testFixture.establishConnecton(testPeer, serverCapabilities);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofSender().withTarget()
+                                              .withAddress(nullValue())
+                                              .withDynamic(nullValue()) // default = false
+                                              .withDurable(nullValue()) // default = none/0
+                                              .withCapabilities(nullValue())
+                                              .and().respond();
+            testPeer.expectClose().respond();
+
+            // Create an anonymous producer
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
-            //Expect and accept a link to the anonymous relay node, check it has no type capability
-            TargetMatcher targetMatcher = new TargetMatcher();
-            targetMatcher.withAddress(nullValue());
-            targetMatcher.withDynamic(nullValue());//default = false
-            targetMatcher.withDurable(nullValue());//default = none/0
-            targetMatcher.withCapabilities(nullValue());
-
-            testPeer.expectSenderAttach(targetMatcher, false, false);
-
-            //Create an anonymous producer
             MessageProducer producer = session.createProducer(null);
             assertNotNull("Producer object was null", producer);
 
-            testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1230,7 +1224,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1258,7 +1252,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1287,7 +1281,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1314,7 +1308,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1350,18 +1344,20 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
     @Test(timeout = 20000)
     public void testCreateDurableTopicSubscriberFailsIfConnectionDoesntHaveExplicitClientID() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
             // Create a connection without an explicit clientId
             Connection connection = testFixture.establishConnecton(testPeer, false, null, null, null, false);
             connection.start();
 
-            testPeer.expectBegin();
+            testPeer.expectBegin().respond();
+            testPeer.expectClose().respond();
+
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
             String topicName = "myTopic";
@@ -1376,62 +1372,60 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                 // Expected
             }
 
-            testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
 
     @Test(timeout = 20000)
     public void testCreateAnonymousProducerWhenAnonymousRelayNodeIsSupported() throws Exception {
-        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
-            //Add capability to indicate support for ANONYMOUS-RELAY
-            Symbol[] serverCapabilities = new Symbol[]{ANONYMOUS_RELAY};
+        try (ProtonTestServer testPeer = new ProtonTestServer();) {
+            final String topicName = "myTopic";
+
+            // Add capability to indicate support for ANONYMOUS-RELAY
+            String[] serverCapabilities = new String[] { ANONYMOUS_RELAY.toString() };
 
             Connection connection = testFixture.establishConnecton(testPeer, serverCapabilities);
             connection.start();
 
-            testPeer.expectBegin();
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            testPeer.expectBegin().respond();
+            testPeer.expectAttach().ofSender().withTarget()
+                                              .withAddress(nullValue())
+                                              .withDynamic(nullValue()) // default = false
+                                              .withDurable(nullValue()) // default = none/0
+                                              .withCapabilities(nullValue())
+                                              .and().respond();
+            testPeer.remoteFlow().withLinkCredit(2).queue();
 
-            String topicName = "myTopic";
-            Topic dest = session.createTopic(topicName);
+            // Expect a new message sent with this producer to use the link to the anonymous relay matched above
+            HeaderMatcher headersMatcher = new HeaderMatcher(true);
+            MessageAnnotationsMatcher msgAnnotationsMatcher = new MessageAnnotationsMatcher(true);
 
-            //Expect and accept a link to the anonymous relay node
-            TargetMatcher targetMatcher = new TargetMatcher();
-            targetMatcher.withAddress(nullValue());
-            targetMatcher.withDynamic(nullValue());//default = false
-            targetMatcher.withDurable(nullValue());//default = none/0
-
-            testPeer.expectSenderAttach(targetMatcher, false, false);
-
-            //Create an anonymous producer
-            MessageProducer producer = session.createProducer(null);
-            assertNotNull("Producer object was null", producer);
-
-            //Expect a new message sent with this producer to use the link to the anonymous relay matched above
-            MessageHeaderSectionMatcher headersMatcher = new MessageHeaderSectionMatcher(true);
-            MessageAnnotationsSectionMatcher msgAnnotationsMatcher = new MessageAnnotationsSectionMatcher(true);
-            TransferPayloadCompositeMatcher messageMatcher = new TransferPayloadCompositeMatcher();
+            org.apache.qpid.protonj2.test.driver.matchers.transport.TransferPayloadCompositeMatcher messageMatcher =
+                    new org.apache.qpid.protonj2.test.driver.matchers.transport.TransferPayloadCompositeMatcher();
             messageMatcher.setHeadersMatcher(headersMatcher);
             messageMatcher.setMessageAnnotationsMatcher(msgAnnotationsMatcher);
 
-            testPeer.expectTransfer(messageMatcher);
+            testPeer.expectTransfer().withPayload(messageMatcher).accept();
+            testPeer.expectTransfer().withPayload(messageMatcher).accept();
+            testPeer.expectClose().respond();
 
-            Message message = session.createMessage();
+            // Create an anonymous producer
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Topic dest = session.createTopic(topicName);
+            MessageProducer producer = session.createProducer(null);
+            assertNotNull("Producer object was null", producer);
+
+            final Message message = session.createMessage();
+
+            producer.send(dest, message);
             producer.send(dest, message);
 
-            //Repeat the send and observe another transfer on the existing link.
-            testPeer.expectTransfer(messageMatcher);
-
-            producer.send(dest, message);
-
-            testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1462,7 +1456,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             targetMatcher.withDynamic(nullValue());//default = false
             targetMatcher.withDurable(nullValue());//default = none/0
 
-            testPeer.expectSenderAttach(targetMatcher, true, false);
+            testPeer.expectSenderAttach(targetMatcher, true, deferAttachFrameWrite);
             //Expect the detach response to the test peer closing the producer link after refusal.
             testPeer.expectDetach(true, false, false);
             testPeer.expectClose();
@@ -1476,7 +1470,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1522,7 +1516,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1561,7 +1555,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1621,7 +1615,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1669,7 +1663,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(2000);
+            testPeer.waitForScriptToComplete(2000);
         }
     }
 
@@ -1693,7 +1687,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -1764,7 +1758,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             final MessageProducer producer2 = session.createProducer(queue);
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
 
             // Verify the producers get marked closed
             assertTrue("producer never closed.", Wait.waitFor(new Wait.Condition() {
@@ -1858,7 +1852,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
@@ -1904,7 +1898,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                 fail("No expected exception for this send.");
             }
 
-            testPeer.waitForAllHandlersToComplete(2000);
+            testPeer.waitForScriptToComplete(2000);
 
             // Verify the producer gets marked closed
             assertTrue(listener.awaitCompletion(5, TimeUnit.SECONDS));
@@ -1965,7 +1959,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             final MessageConsumer consumer2 = session.createConsumer(queue);
 
             // Verify the consumers get marked closed
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
             assertTrue("consumer never closed.", Wait.waitFor(new Wait.Condition() {
                 @Override
                 public boolean isSatisfied() throws Exception {
@@ -2131,7 +2125,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             Queue queue = session.createQueue("myQueue");
             MessageConsumer consumer = session.createConsumer(queue);
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
 
             for (int i = 1; i <= messageCount; i++) {
                 // Then expect an *settled* TransactionalState disposition for each message once received by the consumer
@@ -2148,7 +2142,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             consumer.setMessageListener(new DeliveryOrderListener(done, index));
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
             assertTrue("Not all messages received in given time", done.await(10, TimeUnit.SECONDS));
             assertEquals("Messages were not in expected order, final index was wrong", messageCount - 1, index.get());
 
@@ -2156,7 +2150,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -2244,13 +2238,13 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
                 msg.acknowledge();
 
-                testPeer.waitForAllHandlersToComplete(3000);
+                testPeer.waitForScriptToComplete(3000);
             }
 
             testPeer.expectClose();
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.waitForScriptToComplete(3000);
         }
     }
 
@@ -2312,7 +2306,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             consumer.close();
 
-            testPeer.waitForAllHandlersToComplete(2000);
+            testPeer.waitForScriptToComplete(2000);
 
             testPeer.expectDisposition(true, new ModifiedMatcher().withDeliveryFailed(equalTo(true)), 1, 1);
             testPeer.expectDisposition(true, new ModifiedMatcher().withDeliveryFailed(equalTo(true)), 2, 2);
@@ -2321,7 +2315,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             session.recover();
 
             // Verify the expectations happen in response to the recover() and not the following close().
-            testPeer.waitForAllHandlersToComplete(2000);
+            testPeer.waitForScriptToComplete(2000);
 
             testPeer.expectClose();
             connection.close();
@@ -2371,7 +2365,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             subscriber.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
 
             testPeer.expectDurableSubUnsubscribeNullSourceLookup(false, false, subscriptionName, topicName, true);
             testPeer.expectDetach(true, true, true);
@@ -2522,7 +2516,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             session.recover();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
 
             for (int i = 1; i <= deliverAfterRecoverCount; i++) {
                 assertNotNull("Expected message did not arrive after recover: " + i, receivedTextMessage = (TextMessage) consumer.receive(3000));
@@ -2559,7 +2553,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
                 consumer.close();
 
-                testPeer.waitForAllHandlersToComplete(1000);
+                testPeer.waitForScriptToComplete(1000);
 
                 if(deliverAfterRecoverCount > 0) {
                     // When the session or connection is closed, outstanding delivered messages will have disposition sent.
@@ -2581,14 +2575,14 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
                 session.close();
 
-                testPeer.waitForAllHandlersToComplete(1000);
+                testPeer.waitForScriptToComplete(1000);
             }
 
             testPeer.expectClose();
 
             connection.close();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
         }
     }
 
@@ -2649,7 +2643,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
 
             session.recover();
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
 
             for (int i = 1; i <= acknowledgeAfterRecoverCount; i++) {
                 assertNotNull("Expected message did not arrive after recover: " + i, receivedTextMessage = (TextMessage) consumer.receive(3000));
@@ -2658,7 +2652,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
                 receivedTextMessage.acknowledge();
             }
 
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
 
             if(!consumeAllRecovered) {
                 // Any message delivered+recovered before but not then delivered and acknowledged afterwards, will have
@@ -2738,7 +2732,7 @@ public class SessionIntegrationTest extends QpidJmsTestCase {
             assertTrue(message.contains(AmqpError.RESOURCE_LIMIT_EXCEEDED.toString()) && message.contains(BREAD_CRUMB));
 
             // Verify the session (and  consumer) got marked closed and listener fired
-            testPeer.waitForAllHandlersToComplete(1000);
+            testPeer.waitForScriptToComplete(1000);
             assertTrue("Session closed callback did not fire", sessionClosed.await(5, TimeUnit.SECONDS));
             assertTrue("consumer never closed.", verifyConsumerClosure(BREAD_CRUMB, consumer));
             assertTrue("session never closed.", verifySessionClosure(BREAD_CRUMB, session));

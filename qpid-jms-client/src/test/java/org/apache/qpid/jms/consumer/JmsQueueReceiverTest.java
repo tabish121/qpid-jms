@@ -46,7 +46,7 @@ public class JmsQueueReceiverTest extends JmsConnectionTestSupport {
         super.setUp();
         queueConnection = createQueueConnectionToMockProvider();
         session = queueConnection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
-        queue = session.createQueue(_testName.getMethodName());
+        queue = session.createQueue(testName.getMethodName());
         receiver = session.createReceiver(queue);
     }
 

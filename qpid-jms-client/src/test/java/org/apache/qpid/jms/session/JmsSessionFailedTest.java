@@ -45,7 +45,7 @@ public class JmsSessionFailedTest extends JmsSessionClosedTest {
             public void onException(JMSException exception) {
             }
         });
-        Queue destination = session.createQueue(_testName.getMethodName());
+        Queue destination = session.createQueue(testName.getMethodName());
 
         sender = session.createProducer(destination);
         receiver = session.createConsumer(destination);

@@ -98,6 +98,11 @@
     <!-- Testing Dependencies                -->
     <!-- =================================== -->
     <dependency>
+      <groupId>org.apache.qpid</groupId>
+      <artifactId>protonj2-test-driver</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <scope>test</scope>

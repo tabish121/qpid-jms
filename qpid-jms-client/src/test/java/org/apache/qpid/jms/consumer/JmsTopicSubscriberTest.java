@@ -46,7 +46,7 @@ public class JmsTopicSubscriberTest extends JmsConnectionTestSupport {
         super.setUp();
         topicConnection = createTopicConnectionToMockProvider();
         session = topicConnection.createTopicSession(false, Session.AUTO_ACKNOWLEDGE);
-        topic = session.createTopic(_testName.getMethodName());
+        topic = session.createTopic(testName.getMethodName());
         subscriber = session.createSubscriber(topic);
     }
 

@@ -29,14 +29,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class QpidJmsTestCase {
+
     public static final boolean IS_WINDOWS = System.getProperty("os.name", "unknown").toLowerCase().contains("windows");
 
-    private final Logger _logger = LoggerFactory.getLogger(getClass());
+    private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private final Map<String, String> _propertiesSetForTest = new HashMap<String, String>();
+    private final Map<String, String> propertiesSetForTest = new HashMap<String, String>();
 
     @Rule
-    public TestName _testName = new TestName();
+    public TestName testName = new TestName();
 
     /**
      * Set a System property for duration of this test only. The tearDown will guarantee to reset the property to its
@@ -48,17 +49,17 @@ public class QpidJmsTestCase {
      *            the value to set it to, if null, the property will be cleared
      */
     protected void setTestSystemProperty(final String property, final String value) {
-        if (!_propertiesSetForTest.containsKey(property)) {
+        if (!propertiesSetForTest.containsKey(property)) {
             // Record the current value so we can revert it later.
-            _propertiesSetForTest.put(property, System.getProperty(property));
+            propertiesSetForTest.put(property, System.getProperty(property));
         }
 
         if (value == null) {
             System.clearProperty(property);
-            _logger.info("Set system property '" + property + "' to be cleared");
+            logger.info("Set system property '" + property + "' to be cleared");
         } else {
             System.setProperty(property, value);
-            _logger.info("Set system property '" + property + "' to: '" + value + "'");
+            logger.info("Set system property '" + property + "' to: '" + value + "'");
         }
 
     }
@@ -67,34 +68,34 @@ public class QpidJmsTestCase {
      * Restore the System property values that were set by this test run.
      */
     protected void revertTestSystemProperties() {
-        if (!_propertiesSetForTest.isEmpty()) {
-            for (String key : _propertiesSetForTest.keySet()) {
-                String value = _propertiesSetForTest.get(key);
+        if (!propertiesSetForTest.isEmpty()) {
+            for (String key : propertiesSetForTest.keySet()) {
+                String value = propertiesSetForTest.get(key);
                 if (value != null) {
                     System.setProperty(key, value);
-                    _logger.info("Reverted system property '" + key + "' to: '" + value + "'");
+                    logger.info("Reverted system property '" + key + "' to: '" + value + "'");
                 } else {
                     System.clearProperty(key);
-                    _logger.info("Reverted system property '" + key + "' to be cleared");
+                    logger.info("Reverted system property '" + key + "' to be cleared");
                 }
             }
 
-            _propertiesSetForTest.clear();
+            propertiesSetForTest.clear();
         }
     }
 
     @After
     public void tearDown() throws java.lang.Exception {
-        _logger.info("========== tearDown " + getTestName() + " ==========");
+        logger.info("========== tearDown " + getTestName() + " ==========");
         revertTestSystemProperties();
     }
 
     @Before
     public void setUp() throws Exception {
-        _logger.info("========== start " + getTestName() + " ==========");
+        logger.info("========== start " + getTestName() + " ==========");
     }
 
     protected String getTestName() {
-        return getClass().getSimpleName() + "." + _testName.getMethodName();
+        return getClass().getSimpleName() + "." + testName.getMethodName();
     }
 }
