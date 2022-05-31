@@ -25,6 +25,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -44,7 +45,6 @@ import org.apache.qpid.proton.message.Message;
 import org.junit.Test;
 import org.mockito.Mockito;
 
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.Unpooled;
 
@@ -612,7 +612,7 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     }
 
     private InputStream substituteMockInputStream(AmqpJmsBytesMessageFacade bytesMessage) throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
-        InputStream mock = Mockito.mock(ByteBufInputStream.class);
+        InputStream mock = Mockito.mock(ByteArrayInputStream.class);
 
         Field ishField = bytesMessage.getClass().getDeclaredField("bytesIn");
         ishField.setAccessible(true);

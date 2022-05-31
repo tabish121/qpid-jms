@@ -24,20 +24,24 @@ import java.nio.charset.StandardCharsets;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.ByteCursor;
 
 /**
  * ReadableBuffer implementation that wraps a Netty ByteBuf
  */
 public class AmqpReadableBuffer implements ReadableBuffer {
 
-    private ByteBuf buffer;
+    private static final int DEFAULT_MARK = -1;
 
-    public AmqpReadableBuffer(ByteBuf buffer) {
+    private int markedReadIndex = DEFAULT_MARK;
+    private Buffer buffer;
+
+    public AmqpReadableBuffer(Buffer buffer) {
         this.buffer = buffer;
     }
 
-    public ByteBuf getBuffer() {
+    public Buffer getBuffer() {
         return buffer;
     }
 
@@ -48,17 +52,17 @@ public class AmqpReadableBuffer implements ReadableBuffer {
 
     @Override
     public boolean hasArray() {
-        return buffer.hasArray();
+        return false; // TODO: Buffer API abstracts away low level bytes source
     }
 
     @Override
     public byte[] array() {
-        return buffer.array();
+        return null; // TODO: Buffer API abstracts away low level bytes source
     }
 
     @Override
     public int arrayOffset() {
-        return buffer.arrayOffset();
+        return 0; // TODO: Buffer API abstracts away low level bytes source
     }
 
     @Override
@@ -109,7 +113,7 @@ public class AmqpReadableBuffer implements ReadableBuffer {
 
     @Override
     public ReadableBuffer get(byte[] target) {
-        buffer.readBytes(target);
+        buffer.readBytes(target, 0, target.length);
         return this;
     }
 
@@ -117,15 +121,15 @@ public class AmqpReadableBuffer implements ReadableBuffer {
     public ReadableBuffer get(WritableBuffer target) {
         int start = target.position();
 
-        if (buffer.hasArray()) {
-            target.put(buffer.array(), buffer.arrayOffset() + buffer.readerIndex(), buffer.readableBytes());
-        } else {
-            target.put(buffer.nioBuffer());
+        // TODO: Might be faster to use foreachReadable
+        ByteCursor cursor = buffer.openCursor();
+        while (cursor.readByte()) {
+            target.put(cursor.getByte());
         }
 
         int written = target.position() - start;
 
-        buffer.readerIndex(buffer.readerIndex() + written);
+        buffer.readerOffset(buffer.readerOffset() + written);
 
         return this;
     }
@@ -137,53 +141,59 @@ public class AmqpReadableBuffer implements ReadableBuffer {
 
     @Override
     public ReadableBuffer flip() {
-        buffer.setIndex(0, buffer.readerIndex());
+        buffer.writerOffset(buffer.readerOffset());
+        buffer.readerOffset(0);
         return this;
     }
 
     @Override
     public ReadableBuffer limit(int limit) {
-        buffer.writerIndex(limit);
+        buffer.writerOffset(limit);
         return this;
     }
 
     @Override
     public int limit() {
-        return buffer.writerIndex();
+        return buffer.writerOffset();
     }
 
     @Override
     public ReadableBuffer position(int position) {
-        buffer.readerIndex(position);
+        buffer.readerOffset(position);
         return this;
     }
 
     @Override
     public int position() {
-        return buffer.readerIndex();
+        return buffer.readerOffset();
     }
 
     @Override
     public ReadableBuffer mark() {
-        buffer.markReaderIndex();
+        markedReadIndex = buffer.readerOffset();
         return this;
     }
 
     @Override
     public ReadableBuffer reset() {
-        buffer.resetReaderIndex();
+        if (markedReadIndex != DEFAULT_MARK) {
+            buffer.readerOffset(markedReadIndex);
+            markedReadIndex = DEFAULT_MARK;
+        }
         return this;
     }
 
     @Override
     public ReadableBuffer rewind() {
-        buffer.readerIndex(0);
+        buffer.readerOffset(0);
         return this;
     }
 
     @Override
     public ReadableBuffer clear() {
-        buffer.setIndex(0, buffer.capacity());
+        buffer.writerOffset(buffer.capacity());
+        buffer.readerOffset(0);
+
         return this;
     }
 
@@ -194,17 +204,19 @@ public class AmqpReadableBuffer implements ReadableBuffer {
 
     @Override
     public boolean hasRemaining() {
-        return buffer.isReadable();
+        return buffer.readableBytes() > 0;
     }
 
     @Override
     public ReadableBuffer duplicate() {
-        return new AmqpReadableBuffer(buffer.duplicate());
+        return new AmqpReadableBuffer(buffer.copy());
     }
 
     @Override
     public ByteBuffer byteBuffer() {
-        return buffer.nioBuffer();
+        byte[] copy = new byte[buffer.readableBytes()];
+        buffer.copyInto(buffer.readerOffset(), copy, 0, copy.length);
+        return ByteBuffer.wrap(copy);
     }
 
     @Override

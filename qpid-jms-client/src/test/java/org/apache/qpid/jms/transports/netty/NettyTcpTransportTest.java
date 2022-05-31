@@ -41,7 +41,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
-import io.netty.channel.EventLoopGroup;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.apache.qpid.jms.test.Wait;
 import org.apache.qpid.jms.test.proxy.TestProxy;
@@ -58,17 +57,16 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.channel.epoll.Epoll;
-import io.netty.channel.epoll.EpollEventLoopGroup;
-import io.netty.channel.kqueue.KQueue;
-import io.netty.channel.kqueue.KQueueEventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.handler.proxy.ProxyHandler;
-import io.netty.handler.proxy.Socks5ProxyHandler;
-import io.netty.util.ResourceLeakDetector;
-import io.netty.util.ResourceLeakDetector.Level;
+import io.netty.contrib.handler.proxy.ProxyHandler;
+import io.netty.contrib.handler.proxy.Socks5ProxyHandler;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.BufferAllocator;
+import io.netty5.channel.EventLoopGroup;
+import io.netty5.channel.MultithreadEventLoopGroup;
+import io.netty5.channel.epoll.Epoll;
+import io.netty5.channel.kqueue.KQueue;
+import io.netty5.util.ResourceLeakDetector;
+import io.netty5.util.ResourceLeakDetector.Level;
 
 /**
  * Test basic functionality of the Netty based TCP transport.
@@ -82,10 +80,10 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
     protected boolean transportClosed;
     protected final List<Throwable> exceptions = new ArrayList<Throwable>();
-    protected final List<ByteBuf> data = new ArrayList<ByteBuf>();
+    protected final List<Buffer> data = new ArrayList<Buffer>();
     protected final AtomicInteger bytesRead = new AtomicInteger();
 
-    protected final TransportListener testListener = new NettyTransportListener(false);
+    protected final TransportListener testListener = new NettyTransportListener();
 
     @Test(timeout = 60 * 1000)
     public void testCloseOnNeverConnectedTransport() throws Exception {
@@ -282,9 +280,9 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
         final int CONNECTION_COUNT = 10;
         final int FRAME_SIZE = 8;
 
-        ByteBuf sendBuffer = Unpooled.buffer(FRAME_SIZE);
+        Buffer sendBuffer = BufferAllocator.onHeapUnpooled().allocate(FRAME_SIZE);
         for (int i = 0; i < 8; ++i) {
-            sendBuffer.writeByte('A');
+            sendBuffer.writeByte((byte) 'A');
         }
 
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
@@ -368,7 +366,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             assertTrue(transport.isConnected());
 
-            transport.writeAndFlush(Unpooled.buffer(0));
+            transport.writeAndFlush(BufferAllocator.onHeapUnpooled().allocate(0));
 
             transport.close();
         }
@@ -547,9 +545,9 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             assertTrue(transport.isConnected());
 
-            ByteBuf sendBuffer = transport.allocateSendBuffer(SEND_BYTE_COUNT);
+            Buffer sendBuffer = transport.allocateSendBuffer(SEND_BYTE_COUNT);
             for (int i = 0; i < SEND_BYTE_COUNT; ++i) {
-                sendBuffer.writeByte('A');
+                sendBuffer.writeByte((byte) 'A');
             }
 
             transport.writeAndFlush(sendBuffer);
@@ -592,9 +590,9 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             assertTrue(transport.isConnected());
 
-            ByteBuf sendBuffer = Unpooled.buffer(byteCount);
+            Buffer sendBuffer = BufferAllocator.onHeapUnpooled().allocate(byteCount);
             for (int i = 0; i < byteCount; ++i) {
-                sendBuffer.writeByte('A');
+                sendBuffer.writeByte((byte) 'A');
             }
 
             for (int i = 0; i < iterations; ++i) {
@@ -629,7 +627,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             transport.close();
 
-            ByteBuf sendBuffer = Unpooled.buffer(10);
+            Buffer sendBuffer = BufferAllocator.onHeapUnpooled().allocate(10);
             try {
                 transport.writeAndFlush(sendBuffer);
                 fail("Should throw on send of closed transport");
@@ -713,7 +711,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
                 assertTrue(transport.isConnected());
 
-                ByteBuf sendBuffer = transport.allocateSendBuffer(10 * 1024 * 1024);
+                Buffer sendBuffer = transport.allocateSendBuffer(10 * 1024 * 1024);
                 sendBuffer.writeBytes(new byte[] {0, 1, 2, 3, 4});
 
                 transport.close();
@@ -807,9 +805,11 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             assertEquals(serverLocation, transport.getRemoteLocation());
 
             if(useEpoll) {
-                assertEventLoopGroupType("Transport should be using Epoll", transport, EpollEventLoopGroup.class);
+                // TODO: Fix check on type check, new API uses IO factory
+                assertEventLoopGroupType("Transport should be using Epoll", transport, MultithreadEventLoopGroup.class);
             } else {
-                assertEventLoopGroupType("Transport should be using Nio", transport, NioEventLoopGroup.class);
+                // TODO: Fix check on type check, new API uses IO factory
+                assertEventLoopGroupType("Transport should be using Nio", transport, MultithreadEventLoopGroup.class);
             }
 
             transport.close();
@@ -877,9 +877,11 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             assertTrue(transport.isConnected());
             assertEquals(serverLocation, transport.getRemoteLocation());
             if(useKQueue) {
-                assertEventLoopGroupType("Transport should be using Kqueue", transport, KQueueEventLoopGroup.class);
+                // TODO: Fix check on type check, new API uses IO factory
+                assertEventLoopGroupType("Transport should be using Kqueue", transport, MultithreadEventLoopGroup.class);
             } else {
-                assertEventLoopGroupType("Transport should be using Nio", transport, NioEventLoopGroup.class);
+                // TODO: Fix check on type check, new API uses IO factory
+                assertEventLoopGroupType("Transport should be using Nio", transport, MultithreadEventLoopGroup.class);
             }
 
             transport.close();
@@ -947,20 +949,26 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
     }
 
     public class NettyTransportListener implements TransportListener {
-        final boolean retainDataBufs;
 
-        NettyTransportListener(boolean retainDataBufs) {
-            this.retainDataBufs = retainDataBufs;
+        private boolean takeOwnership;
+        private ArrayList<Buffer> retained = new ArrayList<>();
+
+        public NettyTransportListener() {
+            this(false);
+        }
+
+        public NettyTransportListener(boolean takeOwnership) {
+            this.takeOwnership = takeOwnership;
         }
 
         @Override
-        public void onData(ByteBuf incoming) {
+        public void onData(Buffer incoming) {
             LOG.debug("Client has new incoming data of size: {}", incoming.readableBytes());
             data.add(incoming);
             bytesRead.addAndGet(incoming.readableBytes());
 
-            if(retainDataBufs) {
-                incoming.retain();
+            if (takeOwnership) {
+                retained.add(incoming.send().receive());
             }
         }
 

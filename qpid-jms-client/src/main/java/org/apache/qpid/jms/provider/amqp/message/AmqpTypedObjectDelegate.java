@@ -26,7 +26,7 @@ import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.Section;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
 
 /**
  * Wrapper around an AMQP Message instance that will be treated as a JMS ObjectMessage
@@ -36,7 +36,7 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
 
     static final AmqpValue NULL_OBJECT_BODY = new AmqpValue(null);
 
-    private ByteBuf encodedBody;
+    private Buffer encodedBody;
     private final AmqpJmsMessageFacade parent;
 
     /**
@@ -129,7 +129,7 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
             if (encodedBody != null) {
                 // If we have any body bytes just duplicate those and let the next get
                 // decode them into the returned object payload value.
-                target.encodedBody = encodedBody.duplicate();
+                target.encodedBody = encodedBody.copy();
 
                 // Internal message body copy to satisfy sends. This is safe since the body was set
                 // from a copy (decoded from the bytes) to ensure it is a snapshot. Also safe for

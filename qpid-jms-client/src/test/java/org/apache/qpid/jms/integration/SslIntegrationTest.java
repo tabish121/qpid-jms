@@ -49,7 +49,7 @@ import org.apache.qpid.jms.transports.TransportSupport;
 import org.apache.qpid.jms.transports.netty.NettySimpleAmqpServer;
 import org.junit.Test;
 
-import io.netty.handler.ssl.OpenSsl;
+import io.netty5.handler.ssl.OpenSsl;
 
 public class SslIntegrationTest extends QpidJmsTestCase {
 

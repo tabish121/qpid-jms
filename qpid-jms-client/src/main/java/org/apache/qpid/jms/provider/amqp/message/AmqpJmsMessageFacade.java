@@ -51,7 +51,7 @@ import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 import org.apache.qpid.proton.amqp.messaging.Properties;
 import org.apache.qpid.proton.amqp.messaging.Section;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
 
 public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
@@ -909,7 +909,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     }
 
     @Override
-    public ByteBuf encodeMessage() {
+    public Buffer encodeMessage() {
         return AmqpCodec.encodeMessage(this);
     }
 

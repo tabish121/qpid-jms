@@ -16,34 +16,34 @@
  */
 package org.apache.qpid.jms.message.facade.test;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 
 import javax.jms.IllegalStateException;
 import javax.jms.JMSException;
 
 import org.apache.qpid.jms.message.facade.JmsBytesMessageFacade;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
-import io.netty.buffer.ByteBufOutputStream;
-import io.netty.buffer.Unpooled;
-
 /**
  * A test implementation of the JmsBytesMessageFacade that simply holds a raw Buffer
  */
 public final class JmsTestBytesMessageFacade extends JmsTestMessageFacade implements JmsBytesMessageFacade {
 
-    private ByteBuf content = Unpooled.EMPTY_BUFFER;
-    private ByteBufOutputStream bytesOut;
-    private ByteBufInputStream bytesIn;
+    private static final byte[] EMPTY_BUFFER = new byte[0];
+
+    private byte[] content = EMPTY_BUFFER;
+    private ByteArrayOutputStream bytesOut;
+    private ByteArrayInputStream bytesIn;
 
     public JmsTestBytesMessageFacade() {
     }
 
     public JmsTestBytesMessageFacade(byte[] content) {
-        this.content = Unpooled.copiedBuffer(content);
+        this.content = Arrays.copyOf(content, content.length);
     }
 
     @Override
@@ -56,8 +56,8 @@ public final class JmsTestBytesMessageFacade extends JmsTestMessageFacade implem
         reset();
         JmsTestBytesMessageFacade copy = new JmsTestBytesMessageFacade();
         copyInto(copy);
-        if (this.content != null) {
-            copy.content = this.content.copy();
+        if (content != null) {
+            copy.content = Arrays.copyOf(content, content.length);
         }
 
         return copy;
@@ -80,7 +80,7 @@ public final class JmsTestBytesMessageFacade extends JmsTestMessageFacade implem
             bytesOut = null;
         }
 
-        content = Unpooled.EMPTY_BUFFER;
+        content = EMPTY_BUFFER;
     }
 
     @Override
@@ -91,7 +91,7 @@ public final class JmsTestBytesMessageFacade extends JmsTestMessageFacade implem
 
         if (bytesIn == null) {
             // Duplicate the content buffer to allow for getBodyLength() validity.
-            bytesIn = new ByteBufInputStream(content.duplicate());
+            bytesIn = new ByteArrayInputStream(content);
         }
 
         return bytesIn;
@@ -104,8 +104,8 @@ public final class JmsTestBytesMessageFacade extends JmsTestMessageFacade implem
         }
 
         if (bytesOut == null) {
-            bytesOut = new ByteBufOutputStream(Unpooled.buffer());
-            content = Unpooled.EMPTY_BUFFER;
+            bytesOut = new ByteArrayOutputStream();
+            content = EMPTY_BUFFER;
         }
 
         return bytesOut;
@@ -114,7 +114,7 @@ public final class JmsTestBytesMessageFacade extends JmsTestMessageFacade implem
     @Override
     public void reset() {
         if (bytesOut != null) {
-            content = bytesOut.buffer();
+            content = bytesOut.toByteArray();
             try {
                 bytesOut.close();
             } catch (IOException e) {
@@ -131,22 +131,17 @@ public final class JmsTestBytesMessageFacade extends JmsTestMessageFacade implem
 
     @Override
     public int getBodyLength() {
-        return content.readableBytes();
+        return bytesIn != null ? bytesIn.available() : content.length;
     }
 
     @Override
     public boolean hasBody() {
-        return content.isReadable() || (bytesOut != null && bytesOut.writtenBytes() > 0);
+        return bytesIn != null && bytesIn.available() > 0 || (bytesOut != null && bytesOut.size() > 0);
     }
 
     @Override
     public byte[] copyBody() {
-        ByteBuf duplicate = content.duplicate();
-        byte[] result = new byte[content.readableBytes()];
-
-        duplicate.readBytes(result);
-
-        return result;
+        return Arrays.copyOf(content, content.length);
     }
 
     @Override

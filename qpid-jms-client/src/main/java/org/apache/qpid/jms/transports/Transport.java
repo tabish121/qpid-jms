@@ -19,12 +19,12 @@ package org.apache.qpid.jms.transports;
 import java.io.IOException;
 import java.net.URI;
 import java.security.Principal;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 
 import javax.net.ssl.SSLContext;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.channel.EventLoop;
 
 /**
  * Base class for all QpidJMS Transport instances.
@@ -47,7 +47,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs while attempting the connect.
      */
-    ScheduledExecutorService connect(Runnable initRoutine, SSLContext sslContextOverride) throws IOException;
+    EventLoop connect(Runnable initRoutine, SSLContext sslContextOverride) throws IOException;
 
     /**
      * @return true if transport is connected or false if the connection is down.
@@ -77,7 +77,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs while allocating the send buffer.
      */
-    ByteBuf allocateSendBuffer(int size) throws IOException;
+    Buffer allocateSendBuffer(int size) throws IOException;
 
     /**
      * Writes a chunk of data over the Transport connection without performing an
@@ -88,7 +88,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs during the write operation.
      */
-    void write(ByteBuf output) throws IOException;
+    void write(Buffer output) throws IOException;
 
     /**
      * Writes a chunk of data over the Transport connection and requests a flush of
@@ -99,7 +99,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs during the write operation.
      */
-    void writeAndFlush(ByteBuf output) throws IOException;
+    void writeAndFlush(Buffer output) throws IOException;
 
     /**
      * Request a flush of all pending writes to the underlying connection.

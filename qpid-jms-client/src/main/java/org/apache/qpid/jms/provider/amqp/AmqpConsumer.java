@@ -22,7 +22,6 @@ import static org.apache.qpid.jms.provider.amqp.AmqpSupport.REJECTED;
 
 import java.util.ArrayList;
 import java.util.ListIterator;
-import java.util.concurrent.ScheduledFuture;
 
 import javax.jms.Session;
 
@@ -47,6 +46,8 @@ import org.apache.qpid.proton.engine.Delivery;
 import org.apache.qpid.proton.engine.Receiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty5.util.concurrent.Future;
 
 /**
  * AMQP Consumer object that is used to manage JMS MessageConsumer semantics.
@@ -146,7 +147,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
                     // blocked receive or stop calls that are waiting, unless the consumer is
                     // a participant in a transaction in which case we will just fail the request
                     // and leave the consumer open since the TX needs it to remain active.
-                    final ScheduledFuture<?> future = getSession().schedule(() -> {
+                    final Future<Void> future = getSession().schedule(() -> {
                         LOG.trace("Consumer {} stop timed out awaiting message processing", getConsumerId());
                         ProviderException cause = new ProviderOperationTimedOutException("Consumer stop timed out awaiting message processing");
                         if (session.isTransacted() && session.getTransactionContext().isInTransaction(getConsumerId())) {
@@ -179,7 +180,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
                 // blocked receive or stop calls that are waiting, unless the consumer is
                 // a participant in a transaction in which case we will just fail the request
                 // and leave the consumer open since the TX needs it to remain active.
-                final ScheduledFuture<?> future = getSession().schedule(() -> {
+                final Future<Void> future = getSession().schedule(() -> {
                     LOG.trace("Consumer {} drain request timed out", getConsumerId());
                     ProviderException cause = new ProviderOperationTimedOutException("Remote did not respond to a drain request in time");
                     if (session.isTransacted() && session.getTransactionContext().isInTransaction(getConsumerId())) {
@@ -199,7 +200,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
     private void stopOnSchedule(long timeout, final AsyncResult request) {
         LOG.trace("Consumer {} scheduling stop", getConsumerId());
         // We need to drain the credit if no message(s) arrive to use it.
-        final ScheduledFuture<?> future = getSession().schedule(() -> {
+        final Future<Void> future = getSession().schedule(() -> {
             LOG.trace("Consumer {} running scheduled stop", getConsumerId());
             stop(request);
             session.getProvider().pumpToProtonTransport(request);
@@ -777,23 +778,23 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
 
     private static final class ScheduledRequest implements AsyncResult {
 
-        private final ScheduledFuture<?> sheduledTask;
+        private final Future<Void> sheduledTask;
         private final AsyncResult origRequest;
 
-        public ScheduledRequest(ScheduledFuture<?> completionTask, AsyncResult origRequest) {
+        public ScheduledRequest(Future<Void> completionTask, AsyncResult origRequest) {
             this.sheduledTask = completionTask;
             this.origRequest = origRequest;
         }
 
         @Override
         public void onFailure(ProviderException cause) {
-            sheduledTask.cancel(false);
+            sheduledTask.cancel();
             origRequest.onFailure(cause);
         }
 
         @Override
         public void onSuccess() {
-            boolean cancelled = sheduledTask.cancel(false);
+            boolean cancelled = sheduledTask.cancel();
             if (cancelled) {
                 // Signal completion. Otherwise wait for the scheduled task to do it.
                 origRequest.onSuccess();

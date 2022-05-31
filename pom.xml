@@ -37,7 +37,7 @@
   <properties>
     <!-- Dependency Versions for this Project -->
     <proton-version>0.33.10</proton-version>
-    <netty-version>4.1.75.Final</netty-version>
+    <netty-version>5.0.0.Alpha2</netty-version>
     <slf4j-version>1.7.36</slf4j-version>
     <jakarta.jms-api-version>2.0.3</jakarta.jms-api-version>
 
@@ -45,14 +45,14 @@
     <opentracing-version>0.33.0</opentracing-version>
 
     <!-- Test Dependency Versions for this Project -->
-    <netty-tcnative-version>2.0.50.Final</netty-tcnative-version>
+    <netty-tcnative-version>2.0.52.Final</netty-tcnative-version>
     <activemq-version>5.17.0</activemq-version>
     <junit-version>4.13.2</junit-version>
     <fuse-joram-tests-version>1.0</fuse-joram-tests-version>
     <jetty-version>9.4.45.v20220203</jetty-version>
-    <mockito-version>4.4.0</mockito-version>
+    <mockito-version>4.5.1</mockito-version>
     <hamcrest-version>2.2</hamcrest-version>
-    <hadoop-minikdc-version>3.3.2</hadoop-minikdc-version>
+    <hadoop-minikdc-version>3.3.3</hadoop-minikdc-version>
     <commons-io-version>2.11.0</commons-io-version>
 
     <!-- Maven Plugin Versions for this Project -->
@@ -133,54 +133,54 @@
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-buffer</artifactId>
+        <artifactId>netty5-buffer</artifactId>
         <version>${netty-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-common</artifactId>
+        <artifactId>netty5-common</artifactId>
         <version>${netty-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-handler</artifactId>
+        <artifactId>netty5-handler</artifactId>
         <version>${netty-version}</version>
       </dependency>
       <dependency>
-        <groupId>io.netty</groupId>
+        <groupId>io.netty.contrib</groupId>
         <artifactId>netty-handler-proxy</artifactId>
+        <version>5.0.0.Final-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty5-transport</artifactId>
         <version>${netty-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport</artifactId>
+        <artifactId>netty5-transport-classes-epoll</artifactId>
         <version>${netty-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport-classes-epoll</artifactId>
-        <version>${netty-version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.netty</groupId>
-        <artifactId>netty-transport-native-epoll</artifactId>
+        <artifactId>netty5-transport-native-epoll</artifactId>
         <version>${netty-version}</version>
         <classifier>${netty-transport-native-epoll-classifier}</classifier>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport-classes-kqueue</artifactId>
+        <artifactId>netty5-transport-classes-kqueue</artifactId>
         <version>${netty-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport-native-kqueue</artifactId>
+        <artifactId>netty5-transport-native-kqueue</artifactId>
         <version>${netty-version}</version>
         <classifier>${netty-transport-native-kqueue-classifier}</classifier>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-codec-http</artifactId>
+        <artifactId>netty5-codec-http</artifactId>
         <version>${netty-version}</version>
       </dependency>
       <!--  Provided dependencies -->

@@ -19,6 +19,8 @@ package org.apache.qpid.jms.provider.amqp.message;
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_BYTES_MESSAGE;
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -33,11 +35,6 @@ import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.Section;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
-import io.netty.buffer.ByteBufOutputStream;
-import io.netty.buffer.Unpooled;
-
 /**
  * A JmsBytesMessageFacade that wraps around Proton AMQP Message instances to provide
  * access to the underlying bytes contained in the message.
@@ -47,8 +44,8 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
     private static final Binary EMPTY_BINARY = new Binary(new byte[0]);
     private static final Data EMPTY_BODY = new Data(EMPTY_BINARY);
 
-    private transient ByteBufInputStream bytesIn;
-    private transient ByteBufOutputStream bytesOut;
+    private transient ByteArrayInputStream bytesIn;
+    private transient ByteArrayOutputStream bytesOut;
 
     @Override
     protected void initializeEmptyBody() {
@@ -106,8 +103,8 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
         if (bytesIn == null) {
             Binary body = getBinaryFromBody();
             // Duplicate the content buffer to allow for getBodyLength() validity.
-            bytesIn = new ByteBufInputStream(
-                Unpooled.wrappedBuffer(body.getArray(), body.getArrayOffset(), body.getLength()));
+            bytesIn = new ByteArrayInputStream(
+                body.getArray(), body.getArrayOffset(), body.getLength());
         }
 
         return bytesIn;
@@ -120,7 +117,7 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
         }
 
         if (bytesOut == null) {
-            bytesOut = new ByteBufOutputStream(Unpooled.buffer());
+            bytesOut = new ByteArrayOutputStream();
             setBody(EMPTY_BODY);
         }
 
@@ -130,8 +127,8 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
     @Override
     public void reset() {
         if (bytesOut != null) {
-            ByteBuf writeBuf = bytesOut.buffer();
-            Binary body = new Binary(writeBuf.array(), writeBuf.arrayOffset(), writeBuf.readableBytes());
+            byte[] output = bytesOut.toByteArray();
+            Binary body = new Binary(output, 0, output.length);
             setBody(new Data(body));
             try {
                 bytesOut.close();
@@ -193,7 +190,7 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
     @Override
     public boolean hasBody() {
         if (bytesOut != null) {
-            return bytesOut.writtenBytes() > 0;
+            return bytesOut.size() > 0;
         } else {
             return getBinaryFromBody().getLength() != 0;
         }

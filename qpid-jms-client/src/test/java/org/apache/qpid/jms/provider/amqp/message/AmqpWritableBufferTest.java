@@ -27,8 +27,8 @@ import java.nio.charset.StandardCharsets;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.junit.Test;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.BufferAllocator;
 
 /**
  * Tests for behavior of AmqpWritableBuffer
@@ -37,7 +37,7 @@ public class AmqpWritableBufferTest {
 
     @Test
     public void testGetBuffer() {
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertSame(buffer, writable.getBuffer());
@@ -45,7 +45,7 @@ public class AmqpWritableBufferTest {
 
     @Test
     public void testLimit() {
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertEquals(buffer.capacity(), writable.limit());
@@ -53,29 +53,29 @@ public class AmqpWritableBufferTest {
 
     @Test
     public void testRemaining() {
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
-        assertEquals(buffer.maxCapacity(), writable.remaining());
+        assertEquals(buffer.capacity(), writable.remaining());
         writable.put((byte) 0);
-        assertEquals(buffer.maxCapacity() - 1, writable.remaining());
+        assertEquals(buffer.capacity() - 1, writable.remaining());
     }
 
     @Test
     public void testHasRemaining() {
-        ByteBuf buffer = Unpooled.buffer(100, 100);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(100).implicitCapacityLimit(100);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertTrue(writable.hasRemaining());
         writable.put((byte) 0);
         assertTrue(writable.hasRemaining());
-        buffer.writerIndex(buffer.maxCapacity());
+        buffer.writerOffset(buffer.capacity());
         assertFalse(writable.hasRemaining());
     }
 
     @Test
     public void testGetPosition() {
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertEquals(0, writable.position());
@@ -85,7 +85,7 @@ public class AmqpWritableBufferTest {
 
     @Test
     public void testSetPosition() {
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertEquals(0, writable.position());
@@ -99,7 +99,7 @@ public class AmqpWritableBufferTest {
         input.put((byte) 1);
         input.flip();
 
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertEquals(0, writable.position());
@@ -109,10 +109,10 @@ public class AmqpWritableBufferTest {
 
     @Test
     public void testPutByteBuf() {
-        ByteBuf input = Unpooled.buffer();
+        Buffer input = BufferAllocator.onHeapUnpooled().allocate(1);
         input.writeByte((byte) 1);
 
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertEquals(0, writable.position());
@@ -124,7 +124,7 @@ public class AmqpWritableBufferTest {
     public void testPutString() {
         String ascii = new String("ASCII");
 
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertEquals(0, writable.position());
@@ -143,19 +143,19 @@ public class AmqpWritableBufferTest {
         ByteBuffer buf = ByteBuffer.allocate(1024);
         buf.put((byte) 1);
         buf.flip();
-        if(readOnly) {
+        if (readOnly) {
             buf = buf.asReadOnlyBuffer();
         }
 
         ReadableBuffer input = new ReadableBuffer.ByteBufferReader(buf);
 
-        if(readOnly) {
+        if (readOnly) {
             assertFalse("Expected buffer not to hasArray()", input.hasArray());
         } else {
             assertTrue("Expected buffer to hasArray()", input.hasArray());
         }
 
-        ByteBuf buffer = Unpooled.buffer(1024);
+        Buffer buffer = BufferAllocator.onHeapUnpooled().allocate(1024);
         AmqpWritableBuffer writable = new AmqpWritableBuffer(buffer);
 
         assertEquals(0, writable.position());

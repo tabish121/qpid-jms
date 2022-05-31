@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.qpid.jms.JmsDestination;
@@ -39,6 +38,8 @@ import org.apache.qpid.jms.provider.exceptions.ProviderConnectionRemotelyClosedE
 import org.apache.qpid.proton.engine.Connection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty5.util.concurrent.Future;
 
 public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Connection> implements AmqpResourceParent {
 
@@ -265,7 +266,7 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
      *
      * @return a ScheduledFuture instance that can be used to cancel the task.
      */
-    public ScheduledFuture<?> schedule(final Runnable task, long delay) {
+    public Future<Void> schedule(final Runnable task, long delay) {
         if (task == null) {
             LOG.trace("Resource attempted to schedule a null task.");
             return null;
@@ -286,7 +287,7 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
      *
      * @return a ScheduledFuture instance that can be used to cancel the task.
      */
-    public ScheduledFuture<?> scheduleWithFixedDelay(final Runnable task, long delay) {
+    public Future<Void> scheduleWithFixedDelay(final Runnable task, long delay) {
         if (task == null) {
             LOG.trace("Resource attempted to schedule a null task.");
             return null;

@@ -16,7 +16,7 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
-import io.netty.channel.EventLoopGroup;
+import io.netty5.channel.EventLoopGroup;
 
 public interface EventLoopGroupRef extends AutoCloseable {
 

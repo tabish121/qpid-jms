@@ -24,7 +24,7 @@ import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.message.Message;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
 
 /**
  * Support class containing constant values and static methods that are
@@ -152,10 +152,12 @@ public final class AmqpMessageSupport {
      *
      * @return a new Message instance with the decoded data.
      */
-    public static Message decodeMessage(ByteBuf encodedBytes) {
+    public static Message decodeMessage(Buffer encodedBytes) {
         // For now we must fully decode the message to get at the annotations.
         Message protonMessage = Message.Factory.create();
-        protonMessage.decode(encodedBytes.array(), 0, encodedBytes.readableBytes());
+        byte[] copy = new byte[encodedBytes.readableBytes()];
+        encodedBytes.copyInto(encodedBytes.readerOffset(), copy, 0, copy.length);
+        protonMessage.decode(copy, 0, copy.length);
         return protonMessage;
     }
 
