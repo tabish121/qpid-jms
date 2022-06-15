@@ -34,7 +34,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
 import org.apache.qpid.jms.util.ContentTypeSupport;
@@ -70,9 +69,6 @@ public final class AmqpCodec {
         {
             AMQPDefinedTypes.registerAllTypes(decoder, encoder);
         }
-
-        // Store local duplicates from the global cache for thread safety.
-        Map<Integer, ReadableBuffer> messageAnnotationsCache = new HashMap<>();
     }
 
     private static final ThreadLocal<EncoderDecoderContext> TLS_CODEC = new ThreadLocal<EncoderDecoderContext>() {
@@ -88,7 +84,7 @@ public final class AmqpCodec {
      * be thread safe as many different producers on different threads can be passing data
      * through this codec and accessing the cache if a TLS duplicate isn't populated yet.
      */
-    private static ConcurrentMap<Integer, ReadableBuffer> GLOBAL_ANNOTATIONS_CACHE = new ConcurrentHashMap<>();
+    private static Map<Integer, byte[]> GLOBAL_ANNOTATIONS_CACHE = new ConcurrentHashMap<>();
 
     /**
      * @return a Encoder instance.
@@ -187,7 +183,8 @@ public final class AmqpCodec {
             messageAnnotations.getValue().put(AmqpMessageSupport.JMS_MSG_TYPE, message.getJmsMsgType());
             encoder.writeObject(messageAnnotations);
         } else {
-            buffer.put(getCachedMessageAnnotationsBuffer(message, context));
+            byte[] encodedDesinationAnnotations = getCachedMessageAnnotationsBuffer(message, context);
+            buffer.put(encodedDesinationAnnotations, 0, encodedDesinationAnnotations.length);
         }
         if (properties != null) {
             encoder.writeObject(properties);
@@ -207,63 +204,52 @@ public final class AmqpCodec {
         return buffer.getBuffer();
     }
 
-    private static ReadableBuffer getCachedMessageAnnotationsBuffer(AmqpJmsMessageFacade message, EncoderDecoderContext context) {
+    private static byte[] getCachedMessageAnnotationsBuffer(AmqpJmsMessageFacade message, EncoderDecoderContext context) {
         byte msgType = message.getJmsMsgType();
         byte toType = AmqpDestinationHelper.toTypeAnnotation(message.getDestination());
         byte replyToType = AmqpDestinationHelper.toTypeAnnotation(message.getReplyTo());
 
         Integer entryKey = Integer.valueOf((replyToType << 16) | (toType << 8) | msgType);
 
-        ReadableBuffer result = context.messageAnnotationsCache.get(entryKey);
+        byte[] result = GLOBAL_ANNOTATIONS_CACHE.get(entryKey);
+
         if (result == null) {
             result = populateMessageAnnotationsCacheEntry(message, entryKey, context);
         }
 
-        return result.rewind();
+        return result;
     }
 
-    private static ReadableBuffer populateMessageAnnotationsCacheEntry(AmqpJmsMessageFacade message, Integer entryKey, EncoderDecoderContext context) {
-        ReadableBuffer result = GLOBAL_ANNOTATIONS_CACHE.get(entryKey);
-        if (result == null) {
-            MessageAnnotations messageAnnotations = new MessageAnnotations(new HashMap<>());
+    private static byte[] populateMessageAnnotationsCacheEntry(AmqpJmsMessageFacade message, Integer entryKey, EncoderDecoderContext context) {
+        MessageAnnotations messageAnnotations = new MessageAnnotations(new HashMap<>());
 
-            // Sets the Reply To annotation which will likely not be present most of the time so do it first
-            // to avoid extra work within the map operations.
-            AmqpDestinationHelper.setReplyToAnnotationFromDestination(message.getReplyTo(), messageAnnotations);
-            // Sets the To value's destination annotation set and a known JMS destination type likely to always
-            // be present but we do allow of edge case of unknown types which won't encode an annotation.
-            AmqpDestinationHelper.setToAnnotationFromDestination(message.getDestination(), messageAnnotations);
-            // Now store the message type which we know will always be present so do it last to ensure
-            // the previous calls don't need to compare anything to this value in the map during add or remove
-            messageAnnotations.getValue().put(AmqpMessageSupport.JMS_MSG_TYPE, message.getJmsMsgType());
+        // Sets the Reply To annotation which will likely not be present most of the time so do it first
+        // to avoid extra work within the map operations.
+        AmqpDestinationHelper.setReplyToAnnotationFromDestination(message.getReplyTo(), messageAnnotations);
+        // Sets the To value's destination annotation set and a known JMS destination type likely to always
+        // be present but we do allow of edge case of unknown types which won't encode an annotation.
+        AmqpDestinationHelper.setToAnnotationFromDestination(message.getDestination(), messageAnnotations);
+        // Now store the message type which we know will always be present so do it last to ensure
+        // the previous calls don't need to compare anything to this value in the map during add or remove
+        messageAnnotations.getValue().put(AmqpMessageSupport.JMS_MSG_TYPE, message.getJmsMsgType());
 
-            // This is the maximum possible encoding size that could appear for all the possible data we
-            // store in the cached buffer if the codec was to do the worst possible encode of these types.
-            // We could do a custom encoding to make it minimal which would result in a max of 70 bytes.
-            ByteBuffer buffer = ByteBuffer.allocate(124);
+        // This is the maximum possible encoding size that could appear for all the possible data we
+        // store in the cached buffer if the codec was to do the worst possible encode of these types.
+        // We could do a custom encoding to make it minimal which would result in a max of 70 bytes.
+        ByteBuffer buffer = ByteBuffer.allocate(124);
 
-            WritableBuffer oldBuffer = context.encoder.getBuffer();
-            context.encoder.setByteBuffer(buffer);
-            context.encoder.writeObject(messageAnnotations);
-            context.encoder.setByteBuffer(oldBuffer);
+        WritableBuffer oldBuffer = context.encoder.getBuffer();
+        context.encoder.setByteBuffer(buffer);
+        context.encoder.writeObject(messageAnnotations);
+        context.encoder.setByteBuffer(oldBuffer);
 
-            buffer.flip();
+        // Copy into an array of the correct size for future write operations.
+        buffer.flip();
+        byte[] result = new byte[buffer.remaining()];
+        buffer.get(result);
 
-            result = ReadableBuffer.ByteBufferReader.wrap(buffer);
-
-            // Race on populating the global cache could duplicate work but we should avoid keeping
-            // both copies around in memory.
-            ReadableBuffer previous = GLOBAL_ANNOTATIONS_CACHE.putIfAbsent(entryKey, result);
-            if (previous != null) {
-                result = previous.duplicate();
-            } else {
-                result = result.duplicate();
-            }
-        } else {
-            result = result.duplicate();
-        }
-
-        context.messageAnnotationsCache.put(entryKey, result);
+        // Race on populating the global cache could duplicate work but can use the last one we created this time
+        GLOBAL_ANNOTATIONS_CACHE.putIfAbsent(entryKey, result);
 
         return result;
     }
@@ -282,7 +268,6 @@ public final class AmqpCodec {
      * @throws IOException if an error occurs while creating the message objects.
      */
     public static AmqpJmsMessageFacade decodeMessage(AmqpConsumer consumer, ReadableBuffer messageBytes) throws IOException {
-
         DecoderImpl decoder = getDecoder();
         decoder.setBuffer(messageBytes);
 
