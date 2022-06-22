@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledFuture;
 
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.message.JmsOutboundMessageDispatch;
@@ -39,6 +38,8 @@ import org.apache.qpid.proton.engine.Sender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty5.util.concurrent.Future;
+
 /**
  * Handles the case of anonymous JMS MessageProducers.
  *
@@ -54,7 +55,7 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
     private final Map<JmsDestination, AmqpFallbackProducer> producerCache = new LinkedHashMap<>(1, 0.75f, true);
     private final String producerIdKey = producerIdGenerator.generateId();
     private long producerIdCount;
-    private final ScheduledFuture<?> cacheProducerTimeoutTask;
+    private final Future<Void> cacheProducerTimeoutTask;
 
     /**
      * Creates the Anonymous Producer object.
@@ -137,7 +138,7 @@ public class AmqpAnonymousFallbackProducer extends AmqpProducer {
     @Override
     public void close(AsyncResult request) {
         if (cacheProducerTimeoutTask != null) {
-            cacheProducerTimeoutTask.cancel(false);
+            cacheProducerTimeoutTask.cancel();
         }
 
         if (producerCache.isEmpty()) {

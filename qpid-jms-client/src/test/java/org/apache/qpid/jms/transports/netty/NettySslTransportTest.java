@@ -44,9 +44,9 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.handler.proxy.HttpProxyHandler;
-import io.netty.handler.proxy.ProxyHandler;
-import io.netty.handler.proxy.Socks5ProxyHandler;
+import io.netty.contrib.handler.proxy.HttpProxyHandler;
+import io.netty.contrib.handler.proxy.ProxyHandler;
+import io.netty.contrib.handler.proxy.Socks5ProxyHandler;
 
 /**
  * Test basic functionality of the Netty based TCP Transport ruuing in secure mode (SSL).

@@ -60,10 +60,13 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.BufferAllocator;
+import io.netty5.buffer.api.adaptor.ByteBufAdaptor;
+import io.netty5.channel.ChannelHandler;
+import io.netty5.channel.ChannelHandlerContext;
+import io.netty5.channel.SimpleChannelInboundHandler;
+import io.netty5.util.concurrent.FutureListener;
 
 /**
  * Simple Netty based server that can handle a small subset of AMQP events
@@ -134,7 +137,7 @@ public class NettySimpleAmqpServer extends NettyServer {
 
     //----- Connection Handler -----------------------------------------------//
 
-    private final class ProtonConnection extends SimpleChannelInboundHandler<ByteBuf>  {
+    private final class ProtonConnection extends SimpleChannelInboundHandler<Buffer>  {
 
         private final IdGenerator sessionIdGenerator = new IdGenerator();
 
@@ -162,19 +165,29 @@ public class NettySimpleAmqpServer extends NettyServer {
         }
 
         @Override
-        public void channelRead0(ChannelHandlerContext ctx, ByteBuf input) {
+        public void messageReceived(ChannelHandlerContext ctx, Buffer input) {
             LOG.debug("AMQP Server Channel read: {}", input);
 
-            ChannelFutureListener writeCompletionAction = null;
+            FutureListener<Void> writeCompletionAction = null;
+
+            final ByteBuf wrapped;
+
+            if (input.isDirect()) {
+                // Seemingly a bug when a direct buffer is written into another buffer
+                // causes the wrong memory to be copied.
+                wrapped = ByteBufAdaptor.intoByteBuf(input.copy(true));
+            } else {
+                wrapped = ByteBufAdaptor.intoByteBuf(input);
+            }
 
             try {
                 if (!headerRead) {
-                    processIncomingHeader(ctx, input);
+                    processIncomingHeader(ctx, wrapped);
                 } else {
-                    pourIntoProton(input);
+                    pourIntoProton(wrapped);
                 }
             } catch (Throwable e) {
-                ctx.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
+                ctx.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener((fut) -> ctx.channel().close());
                 return;
             }
 
@@ -185,10 +198,10 @@ public class NettySimpleAmqpServer extends NettyServer {
                     processProtonEvents();
                 }
             } catch (Throwable e) {
-                writeCompletionAction = ChannelFutureListener.CLOSE;
+                writeCompletionAction = (fut) -> ctx.channel().close();
             } finally {
                 if (protonConnection.getLocalState() == EndpointState.CLOSED) {
-                    writeCompletionAction = ChannelFutureListener.CLOSE;
+                    writeCompletionAction = (fut) -> ctx.channel().close();
                 }
 
                 pumpProtonToChannel(ctx, writeCompletionAction);
@@ -321,13 +334,13 @@ public class NettySimpleAmqpServer extends NettyServer {
             session.open();
         }
 
-        void pumpProtonToChannel(ChannelHandlerContext ctx, ChannelFutureListener writeCompletionAction) {
+        void pumpProtonToChannel(ChannelHandlerContext ctx, FutureListener<Void> writeCompletionAction) {
             boolean done = false;
             while (!done) {
                 ByteBuffer toWrite = protonTransport.getOutputBuffer();
                 if (toWrite != null && toWrite.hasRemaining()) {
                     LOG.trace("Server: Sending {} bytes out", toWrite.limit());
-                    ctx.write(Unpooled.wrappedBuffer(toWrite));
+                    ctx.write(BufferAllocator.onHeapUnpooled().allocate(toWrite.remaining()).writeBytes(toWrite));
                     toWrite.position(toWrite.limit());
                     protonTransport.outputConsumed();
                 } else {
@@ -336,7 +349,7 @@ public class NettySimpleAmqpServer extends NettyServer {
             }
 
             if (writeCompletionAction != null) {
-                ctx.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(writeCompletionAction);
+                ctx.writeAndFlush(BufferAllocator.onHeapUnpooled().allocate(0)).addListener(writeCompletionAction);
             } else {
                 ctx.flush();
             }

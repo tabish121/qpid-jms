@@ -16,17 +16,19 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
-import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.nio.NioSocketChannel;
+import static java.util.Objects.requireNonNull;
+
+import java.util.concurrent.ThreadFactory;
+
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.ThreadFactory;
-
-import static java.util.Objects.requireNonNull;
+import io.netty5.bootstrap.Bootstrap;
+import io.netty5.channel.EventLoopGroup;
+import io.netty5.channel.MultithreadEventLoopGroup;
+import io.netty5.channel.nio.NioHandler;
+import io.netty5.channel.socket.nio.NioSocketChannel;
 
 public enum EventLoopType {
     EPOLL, KQUEUE, NIO;
@@ -51,7 +53,7 @@ public enum EventLoopType {
                 return KQueueSupport.createGroup(threads, ioThreadFactory);
             case NIO:
                 LOG.trace("Netty Transport using Nio mode");
-                return new NioEventLoopGroup(threads, ioThreadFactory);
+                return new MultithreadEventLoopGroup(threads, ioThreadFactory, NioHandler.newFactory());
             default:
                 throw new IllegalArgumentException("Unknown event loop type:" + type);
         }

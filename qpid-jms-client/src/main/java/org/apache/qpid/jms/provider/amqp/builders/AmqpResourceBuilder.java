@@ -16,8 +16,6 @@
  */
 package org.apache.qpid.jms.provider.amqp.builders;
 
-import java.util.concurrent.ScheduledFuture;
-
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
 import org.apache.qpid.jms.meta.JmsResource;
 import org.apache.qpid.jms.meta.JmsResource.ResourceState;
@@ -36,6 +34,8 @@ import org.apache.qpid.proton.engine.EndpointState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty5.util.concurrent.Future;
+
 /**
  * Base for all AmqpResource builders.
  *
@@ -49,7 +49,7 @@ public abstract class AmqpResourceBuilder<TARGET extends AmqpResource, PARENT ex
     private static final Logger LOG = LoggerFactory.getLogger(AmqpResourceBuilder.class);
 
     protected AsyncResult request;
-    protected ScheduledFuture<?> requestTimeoutTask;
+    protected Future<Void> requestTimeoutTask;
     protected TARGET resource;
     protected ENDPOINT endpoint;
     protected final PARENT parent;
@@ -160,7 +160,7 @@ public abstract class AmqpResourceBuilder<TARGET extends AmqpResource, PARENT ex
         }
 
         if (requestTimeoutTask != null) {
-            requestTimeoutTask.cancel(false);
+            requestTimeoutTask.cancel();
         }
 
         if (isOpenedEndpointValid()) {
@@ -196,7 +196,7 @@ public abstract class AmqpResourceBuilder<TARGET extends AmqpResource, PARENT ex
         }
 
         if (requestTimeoutTask != null) {
-            requestTimeoutTask.cancel(false);
+            requestTimeoutTask.cancel();
         }
 
         LOG.warn("Open of resource:({}) failed: {}", resourceInfo, openError.getMessage());

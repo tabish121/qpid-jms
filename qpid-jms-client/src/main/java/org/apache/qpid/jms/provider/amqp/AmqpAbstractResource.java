@@ -16,8 +16,6 @@
  */
 package org.apache.qpid.jms.provider.amqp;
 
-import java.util.concurrent.ScheduledFuture;
-
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
 import org.apache.qpid.jms.meta.JmsResource;
 import org.apache.qpid.jms.meta.JmsResource.ResourceState;
@@ -29,6 +27,8 @@ import org.apache.qpid.proton.engine.Endpoint;
 import org.apache.qpid.proton.engine.EndpointState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty5.util.concurrent.Future;
 
 /**
  * Abstract base for all AmqpResource implementations to extend.
@@ -45,7 +45,7 @@ public abstract class AmqpAbstractResource<R extends JmsResource, E extends Endp
     private static final Logger LOG = LoggerFactory.getLogger(AmqpAbstractResource.class);
 
     protected AsyncResult closeRequest;
-    protected ScheduledFuture<?> closeTimeoutTask;
+    protected Future<Void> closeTimeoutTask;
 
     private final E endpoint;
     private final R resourceInfo;
@@ -167,7 +167,7 @@ public abstract class AmqpAbstractResource<R extends JmsResource, E extends Endp
         }
 
         if (closeTimeoutTask != null) {
-            closeTimeoutTask.cancel(true);
+            closeTimeoutTask.cancel();
             closeTimeoutTask = null;
         }
 

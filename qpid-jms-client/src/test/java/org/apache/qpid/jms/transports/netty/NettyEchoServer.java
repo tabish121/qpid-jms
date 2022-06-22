@@ -20,10 +20,10 @@ import org.apache.qpid.jms.transports.TransportOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.channel.ChannelHandler;
+import io.netty5.channel.ChannelHandlerContext;
+import io.netty5.channel.SimpleChannelInboundHandler;
 
 /**
  * Simple Netty Server used to echo all data.
@@ -45,10 +45,10 @@ public class NettyEchoServer extends NettyServer {
         return new EchoServerHandler();
     }
 
-    private class EchoServerHandler extends SimpleChannelInboundHandler<ByteBuf>  {
+    private class EchoServerHandler extends SimpleChannelInboundHandler<Buffer>  {
 
         @Override
-        public void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) {
+        public void messageReceived(ChannelHandlerContext ctx, Buffer msg) {
             LOG.trace("Channel read: {}", msg);
             ctx.write(msg.copy());
         }

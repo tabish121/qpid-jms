@@ -16,12 +16,14 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
+import static org.apache.qpid.jms.transports.netty.NettyEventLoopGroupFactory.sharedGroup;
+import static org.apache.qpid.jms.transports.netty.NettyEventLoopGroupFactory.unsharedGroup;
+
 import java.io.IOException;
 import java.net.URI;
 import java.security.Principal;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
@@ -36,28 +38,26 @@ import org.apache.qpid.jms.util.IOExceptionSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.FixedRecvByteBufAllocator;
-import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.logging.LoggingHandler;
-import io.netty.handler.proxy.ProxyHandler;
-import io.netty.handler.ssl.SslHandler;
-import io.netty.resolver.NoopAddressResolverGroup;
-import io.netty.util.ReferenceCountUtil;
-import io.netty.util.concurrent.Future;
-import io.netty.util.concurrent.GenericFutureListener;
-
-import static org.apache.qpid.jms.transports.netty.NettyEventLoopGroupFactory.sharedGroup;
-import static org.apache.qpid.jms.transports.netty.NettyEventLoopGroupFactory.unsharedGroup;
+import io.netty.contrib.handler.proxy.ProxyHandler;
+import io.netty5.bootstrap.Bootstrap;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.adaptor.ByteBufAdaptor;
+import io.netty5.channel.Channel;
+import io.netty5.channel.ChannelHandler;
+import io.netty5.channel.ChannelHandlerContext;
+import io.netty5.channel.ChannelInitializer;
+import io.netty5.channel.ChannelOption;
+import io.netty5.channel.ChannelPipeline;
+import io.netty5.channel.EventLoop;
+import io.netty5.channel.FixedRecvBufferAllocator;
+import io.netty5.channel.SimpleChannelInboundHandler;
+import io.netty5.handler.logging.LoggingHandler;
+import io.netty5.handler.ssl.SslHandler;
+import io.netty5.resolver.NoopAddressResolverGroup;
+import io.netty5.util.ReferenceCountUtil;
+import io.netty5.util.concurrent.Future;
+import io.netty5.util.concurrent.FutureListener;
 
 /**
  * TCP based transport that uses Netty as the underlying IO layer.
@@ -124,7 +124,7 @@ public class NettyTcpTransport implements Transport {
     }
 
     @Override
-    public ScheduledExecutorService connect(final Runnable initRoutine, SSLContext sslContextOverride) throws IOException {
+    public EventLoop connect(final Runnable initRoutine, SSLContext sslContextOverride) throws IOException {
         if (closed.get()) {
             throw new IllegalStateException("Transport has already been closed");
         }
@@ -167,13 +167,13 @@ public class NettyTcpTransport implements Transport {
         configureNetty(bootstrap, transportOptions);
         transportOptions.setSslContextOverride(sslContextOverride);
 
-        ChannelFuture future = bootstrap.connect(getRemoteHost(), getRemotePort());
-        future.addListener(new ChannelFutureListener() {
+        Future<Channel> future = bootstrap.connect(getRemoteHost(), getRemotePort());
+        future.addListener(new FutureListener<Channel>() {
 
             @Override
-            public void operationComplete(ChannelFuture future) throws Exception {
+            public void operationComplete(Future<? extends Channel> future) throws Exception {
                 if (!future.isSuccess()) {
-                    handleException(future.channel(), IOExceptionSupport.create(future.cause()));
+                    handleException(channel, IOExceptionSupport.create(future.cause()));
                 }
             }
         });
@@ -196,14 +196,14 @@ public class NettyTcpTransport implements Transport {
             throw failureCause;
         } else {
             // Connected, allow any held async error to fire now and close the transport.
-            channel.eventLoop().execute(() -> {
+            channel.executor().execute(() -> {
                 if (failureCause != null) {
                     channel.pipeline().fireExceptionCaught(failureCause);
                 }
             });
         }
         // returning the channel's specific event loop: the overall event loop group may be multi-threaded
-        return channel.eventLoop();
+        return channel.executor();
     }
 
     @Override
@@ -235,21 +235,21 @@ public class NettyTcpTransport implements Transport {
     @Override
     public ByteBuf allocateSendBuffer(int size) throws IOException {
         checkConnected();
-        return channel.alloc().ioBuffer(size, size);
+        return ByteBufAdaptor.intoByteBuf(channel.bufferAllocator().allocate(size).implicitCapacityLimit(size));
     }
 
     @Override
     public void write(ByteBuf output) throws IOException {
         checkConnected(output);
         LOG.trace("Attempted write of buffer: {}", output);
-        channel.write(output, channel.voidPromise());
+        channel.write(ByteBufAdaptor.extractOrCopy(channel.bufferAllocator(), output));
     }
 
     @Override
     public void writeAndFlush(ByteBuf output) throws IOException {
         checkConnected(output);
         LOG.trace("Attempted write and flush of buffer: {}", output);
-        channel.writeAndFlush(output, channel.voidPromise());
+        channel.writeAndFlush(ByteBufAdaptor.extractOrCopy(channel.bufferAllocator(), output));
     }
 
     @Override
@@ -337,7 +337,7 @@ public class NettyTcpTransport implements Transport {
 
     }
 
-    protected ChannelInboundHandlerAdapter createChannelHandler() {
+    protected ChannelHandler createChannelHandler() {
         return new NettyTcpTransportHandler();
     }
 
@@ -352,10 +352,10 @@ public class NettyTcpTransport implements Transport {
         LOG.trace("Channel has gone inactive! Channel is {}", channel);
         if (connected.compareAndSet(true, false) && !closed.get()) {
             LOG.trace("Firing onTransportClosed listener");
-            if (channel.eventLoop().inEventLoop()) {
+            if (channel.executor().inEventLoop()) {
                 listener.onTransportClosed();
             } else {
-                channel.eventLoop().execute(() -> {
+                channel.executor().execute(() -> {
                     listener.onTransportClosed();
                 });
             }
@@ -371,14 +371,14 @@ public class NettyTcpTransport implements Transport {
         LOG.trace("Exception on channel! Channel is {}", channel);
         if (connected.compareAndSet(true, false) && !closed.get()) {
             LOG.trace("Firing onTransportError listener");
-            if (channel.eventLoop().inEventLoop()) {
+            if (channel.executor().inEventLoop()) {
                 if (failureCause != null) {
                     listener.onTransportError(failureCause);
                 } else {
                     listener.onTransportError(cause);
                 }
             } else {
-                channel.eventLoop().execute(() -> {
+                channel.executor().execute(() -> {
                     if (failureCause != null) {
                         listener.onTransportError(failureCause);
                     } else {
@@ -444,7 +444,7 @@ public class NettyTcpTransport implements Transport {
 
         if (options.getReceiveBufferSize() != -1) {
             bootstrap.option(ChannelOption.SO_RCVBUF, options.getReceiveBufferSize());
-            bootstrap.option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(options.getReceiveBufferSize()));
+            bootstrap.option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvBufferAllocator(options.getReceiveBufferSize()));
         }
 
         if (options.getTrafficClass() != -1) {
@@ -476,7 +476,7 @@ public class NettyTcpTransport implements Transport {
         if (isSecure()) {
             final SslHandler sslHandler;
             try {
-                sslHandler = TransportSupport.createSslHandler(channel.alloc(), getRemoteLocation(), getTransportOptions());
+                sslHandler = TransportSupport.createSslHandler(channel.bufferAllocator(), getRemoteLocation(), getTransportOptions());
             } catch (Exception ex) {
                 throw IOExceptionSupport.create(ex);
             }
@@ -510,9 +510,9 @@ public class NettyTcpTransport implements Transport {
                 handleConnected(context.channel());
             } else {
                 SslHandler sslHandler = context.pipeline().get(SslHandler.class);
-                sslHandler.handshakeFuture().addListener(new GenericFutureListener<Future<Channel>>() {
+                sslHandler.handshakeFuture().addListener(new FutureListener<Channel>() {
                     @Override
-                    public void operationComplete(Future<Channel> future) throws Exception {
+                    public void operationComplete(Future<? extends Channel> future) throws Exception {
                         if (future.isSuccess()) {
                             LOG.trace("SSL Handshake has completed: {}", channel);
                             handleConnected(channel);
@@ -538,17 +538,17 @@ public class NettyTcpTransport implements Transport {
 
     //----- Handle binary data over socket connections -----------------------//
 
-    protected class NettyTcpTransportHandler extends NettyDefaultHandler<ByteBuf> {
+    protected class NettyTcpTransportHandler extends NettyDefaultHandler<Buffer> {
 
         @Override
-        protected void channelRead0(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
+        protected void messageReceived(ChannelHandlerContext ctx, Buffer buffer) throws Exception {
             LOG.trace("New incoming data read: {}", buffer);
             // Avoid all doubts to the contrary
-            if (channel.eventLoop().inEventLoop()) {
-                listener.onData(buffer);
+            if (channel.executor().inEventLoop()) {
+                listener.onData(ByteBufAdaptor.intoByteBuf(buffer));
             } else {
-                channel.eventLoop().execute(() -> {
-                    listener.onData(buffer);
+                channel.executor().execute(() -> {
+                    listener.onData(ByteBufAdaptor.intoByteBuf(buffer));
                 });
             }
         }

@@ -24,12 +24,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import io.netty.channel.EventLoopGroup;
-import io.netty.util.concurrent.Future;
-
 import org.apache.qpid.jms.util.QpidJMSThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty5.channel.EventLoopGroup;
+import io.netty5.util.concurrent.Future;
 
 public final class NettyEventLoopGroupFactory {
 
@@ -97,7 +97,7 @@ public final class NettyEventLoopGroupFactory {
     }
 
     private static void shutdownEventLoopGroup(final EventLoopGroup group) {
-        Future<?> fut = group.shutdownGracefully(0, SHUTDOWN_TIMEOUT, TimeUnit.MILLISECONDS);
+        Future<Void> fut = group.shutdownGracefully(0, SHUTDOWN_TIMEOUT, TimeUnit.MILLISECONDS);
         if (!fut.awaitUninterruptibly(2 * SHUTDOWN_TIMEOUT)) {
             LOG.trace("Channel group shutdown failed to complete in allotted time");
         }

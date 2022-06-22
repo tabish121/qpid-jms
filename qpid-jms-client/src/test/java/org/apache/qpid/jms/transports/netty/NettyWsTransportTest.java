@@ -43,10 +43,10 @@ import org.slf4j.LoggerFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.HttpHeaders;
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler.HandshakeComplete;
-import io.netty.handler.proxy.HttpProxyHandler;
-import io.netty.handler.proxy.ProxyHandler;
+import io.netty.contrib.handler.proxy.HttpProxyHandler;
+import io.netty.contrib.handler.proxy.ProxyHandler;
+import io.netty5.handler.codec.http.HttpHeaders;
+import io.netty5.handler.codec.http.websocketx.WebSocketServerProtocolHandler.HandshakeComplete;
 
 /**
  * Test the Netty based WebSocket Transport

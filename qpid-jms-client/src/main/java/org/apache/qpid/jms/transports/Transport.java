@@ -19,12 +19,12 @@ package org.apache.qpid.jms.transports;
 import java.io.IOException;
 import java.net.URI;
 import java.security.Principal;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 
 import javax.net.ssl.SSLContext;
 
 import io.netty.buffer.ByteBuf;
+import io.netty5.channel.EventLoop;
 
 /**
  * Base class for all QpidJMS Transport instances.
@@ -47,7 +47,7 @@ public interface Transport {
      *
      * @throws IOException if an error occurs while attempting the connect.
      */
-    ScheduledExecutorService connect(Runnable initRoutine, SSLContext sslContextOverride) throws IOException;
+    EventLoop connect(Runnable initRoutine, SSLContext sslContextOverride) throws IOException;
 
     /**
      * @return true if transport is connected or false if the connection is down.

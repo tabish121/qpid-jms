@@ -21,7 +21,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ScheduledFuture;
 
 import org.apache.qpid.jms.message.JmsOutboundMessageDispatch;
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
@@ -49,6 +48,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
+import io.netty5.util.concurrent.Future;
 
 /**
  * AMQP Producer object that is used to manage JMS MessageProducer semantics.
@@ -328,7 +328,7 @@ public class AmqpFixedProducer extends AmqpProducer {
         private final AsyncResult request;
 
         private Delivery delivery;
-        private ScheduledFuture<?> requestTimeout;
+        private Future<Void> requestTimeout;
 
         public InFlightSend(JmsOutboundMessageDispatch envelope, AsyncResult request) {
             this.envelope = envelope;
@@ -365,9 +365,9 @@ public class AmqpFixedProducer extends AmqpProducer {
             }
         }
 
-        public void setRequestTimeout(ScheduledFuture<?> requestTimeout) {
+        public void setRequestTimeout(Future<Void> requestTimeout) {
             if (this.requestTimeout != null) {
-                this.requestTimeout.cancel(false);
+                this.requestTimeout.cancel();
             }
 
             this.requestTimeout = requestTimeout;

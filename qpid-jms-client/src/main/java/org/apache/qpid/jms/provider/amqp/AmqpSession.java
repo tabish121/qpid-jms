@@ -20,10 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-
-import jakarta.jms.IllegalStateException;
 
 import org.apache.qpid.jms.meta.JmsConsumerId;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
@@ -41,6 +38,9 @@ import org.apache.qpid.jms.provider.amqp.builders.AmqpProducerBuilder;
 import org.apache.qpid.proton.engine.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty5.util.concurrent.Future;
+import jakarta.jms.IllegalStateException;
 
 public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> implements AmqpResourceParent {
 
@@ -195,7 +195,7 @@ public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> i
      *
      * @return a ScheduledFuture instance that can be used to cancel the task.
      */
-    public ScheduledFuture<?> schedule(final Runnable task, long delay) {
+    public Future<Void> schedule(final Runnable task, long delay) {
         if (task == null) {
             LOG.trace("Resource attempted to schedule a null task.");
             return null;

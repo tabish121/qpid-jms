@@ -17,7 +17,6 @@
 package org.apache.qpid.jms.provider.amqp;
 
 import java.nio.BufferOverflowException;
-import java.util.concurrent.ScheduledFuture;
 
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
 import org.apache.qpid.jms.meta.JmsSessionInfo;
@@ -42,6 +41,8 @@ import org.apache.qpid.proton.engine.Sender;
 import org.apache.qpid.proton.message.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty5.util.concurrent.Future;
 
 /**
  * Represents the AMQP Transaction coordinator link used by the transaction context
@@ -105,7 +106,7 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
                 pendingRequest = null;
 
                 if (context.getTimeout() != null) {
-                    context.getTimeout().cancel(false);
+                    context.getTimeout().cancel();
                 }
             }
 
@@ -130,7 +131,7 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
         Declare declare = new Declare();
         message.setBody(new AmqpValue(declare));
 
-        ScheduledFuture<?> timeout = scheduleTimeoutIfNeeded("Timed out waiting for declare of TX.", request);
+        Future<Void> timeout = scheduleTimeoutIfNeeded("Timed out waiting for declare of TX.", request);
         OperationContext context = new OperationContext(txId, request, timeout);
 
         Delivery delivery = getEndpoint().delivery(tagGenerator.getNextTag());
@@ -167,7 +168,7 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
         discharge.setTxnId((Binary) txId.getProviderHint());
         message.setBody(new AmqpValue(discharge));
 
-        ScheduledFuture<?> timeout = scheduleTimeoutIfNeeded("Timed out waiting for discharge of TX.", request);
+        Future<Void> timeout = scheduleTimeoutIfNeeded("Timed out waiting for discharge of TX.", request);
         OperationContext context = new OperationContext(txId, request, timeout);
 
         Delivery delivery = getEndpoint().delivery(tagGenerator.getNextTag());
@@ -216,10 +217,10 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
     private class OperationContext {
 
         private final AsyncResult request;
-        private final ScheduledFuture<?> timeout;
+        private final Future<Void> timeout;
         private final JmsTransactionId transactionId;
 
-        public OperationContext(JmsTransactionId transactionId, AsyncResult request, ScheduledFuture<?> timeout) {
+        public OperationContext(JmsTransactionId transactionId, AsyncResult request, Future<Void> timeout) {
             this.transactionId = transactionId;
             this.request = request;
             this.timeout = timeout;
@@ -233,12 +234,12 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
             return request;
         }
 
-        public ScheduledFuture<?> getTimeout() {
+        public Future<Void> getTimeout() {
             return timeout;
         }
     }
 
-    private ScheduledFuture<?> scheduleTimeoutIfNeeded(String cause, AsyncResult pendingRequest) {
+    private Future<Void> scheduleTimeoutIfNeeded(String cause, AsyncResult pendingRequest) {
         AmqpProvider provider = getParent().getProvider();
         if (provider.getRequestTimeout() != JmsConnectionInfo.INFINITE) {
             return provider.scheduleRequestTimeout(pendingRequest, provider.getRequestTimeout(), new ProviderOperationTimedOutException(cause));

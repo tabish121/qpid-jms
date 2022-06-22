@@ -24,9 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -95,6 +93,10 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.adaptor.ByteBufAdaptor;
+import io.netty5.channel.EventLoop;
+import io.netty5.util.concurrent.Future;
 
 /**
  * An AMQP v1.0 Provider.
@@ -150,7 +152,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
     private final URI remoteURI;
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Throwable failureCause;
-    private ScheduledExecutorService serializer;
+    private EventLoop serializer;
     private final org.apache.qpid.proton.engine.Transport protonTransport =
         org.apache.qpid.proton.engine.Transport.Factory.create();
     private final Collector protonCollector = new CollectorImpl();
@@ -159,7 +161,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
 
     private final ProviderFutureFactory futureFactory;
     private AsyncResult connectionRequest;
-    private ScheduledFuture<?> nextIdleTimeoutCheck;
+    private Future<Void> nextIdleTimeoutCheck;
     private List<AsyncResult> failOnConnectionDropList = new ArrayList<>();
 
     /**
@@ -373,7 +375,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                         } finally {
                             if (nextIdleTimeoutCheck != null) {
                                 LOG.trace("Cancelling scheduled IdleTimeoutCheck");
-                                nextIdleTimeoutCheck.cancel(false);
+                                nextIdleTimeoutCheck.cancel();
                                 nextIdleTimeoutCheck = null;
                             }
                         }
@@ -854,24 +856,31 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
     }
 
     @Override
-    public void onData(final ByteBuf input) {
+    public void onData(final ByteBuf source) {
         try {
             if (isTraceBytes()) {
-                TRACE_BYTES.info("Received: {}", ByteBufUtil.hexDump(input));
+                TRACE_BYTES.info("Received: {}", ByteBufUtil.hexDump(source));
             }
 
-            if(protonTransportErrorHandled) {
+            if (protonTransportErrorHandled) {
                 LOG.trace("Skipping data processing, proton transport previously errored.");
                 return;
             }
+
+            Buffer input = ByteBufAdaptor.extract(source);
 
             do {
                 ByteBuffer buffer = protonTransport.tail();
                 int chunkSize = Math.min(buffer.remaining(), input.readableBytes());
                 buffer.limit(buffer.position() + chunkSize);
-                input.readBytes(buffer);
+
+                input.copyInto(input.readerOffset(), buffer, buffer.position(), chunkSize);
+                input.skipReadable(chunkSize);
+
+                buffer.position(buffer.limit());
+
                 protonTransport.process();
-            } while (input.isReadable());
+            } while (input.readableBytes() > 0);
 
             // Process the state changes from the latest data and then answer back
             // any pending updates to the Broker.
@@ -1081,7 +1090,8 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
                 ByteBuffer toWrite = protonTransport.getOutputBuffer();
                 if (toWrite != null && toWrite.hasRemaining()) {
                     ByteBuf outbound = transport.allocateSendBuffer(toWrite.remaining());
-                    outbound.writeBytes(toWrite);
+                    Buffer sink = ByteBufAdaptor.extract(outbound);
+                    sink.writeBytes(toWrite);
 
                     if (isTraceBytes()) {
                         TRACE_BYTES.info("Sending: {}", ByteBufUtil.hexDump(outbound));
@@ -1146,7 +1156,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         }
 
         if (nextIdleTimeoutCheck != null) {
-            nextIdleTimeoutCheck.cancel(true);
+            nextIdleTimeoutCheck.cancel();
             nextIdleTimeoutCheck = null;
         }
 
@@ -1509,7 +1519,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
         return protonConnection;
     }
 
-    ScheduledExecutorService getScheduler() {
+    EventLoop getScheduler() {
         return this.serializer;
     }
 
@@ -1532,7 +1542,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
      *
      * @return a {@link ScheduledFuture} that can be stored by the caller.
      */
-    public ScheduledFuture<?> scheduleRequestTimeout(final AsyncResult request, long timeout, final ProviderException error) {
+    public io.netty5.util.concurrent.Future<Void> scheduleRequestTimeout(final AsyncResult request, long timeout, final ProviderException error) {
         if (timeout != JmsConnectionInfo.INFINITE) {
             return serializer.schedule(() -> {
                 request.onFailure(error);
@@ -1557,7 +1567,7 @@ public class AmqpProvider implements Provider, TransportListener , AmqpResourceP
      *
      * @return a {@link ScheduledFuture} that can be stored by the caller.
      */
-    public ScheduledFuture<?> scheduleRequestTimeout(final AsyncResult request, long timeout, final AmqpExceptionBuilder builder) {
+    public Future<Void> scheduleRequestTimeout(final AsyncResult request, long timeout, final AmqpExceptionBuilder builder) {
         if (timeout != JmsConnectionInfo.INFINITE) {
             return serializer.schedule(() -> {
                 request.onFailure(builder.createException());

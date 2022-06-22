@@ -33,10 +33,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import jakarta.jms.Connection;
-import jakarta.jms.InvalidClientIDException;
-import jakarta.jms.Session;
-
 import org.apache.qpid.jms.JmsConnectionExtensions;
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
@@ -46,12 +42,18 @@ import org.apache.qpid.proton.amqp.transport.ConnectionError;
 import org.apache.qpid.proton.amqp.transport.ErrorCondition;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.DisableOnDebug;
 import org.junit.rules.TestName;
+import org.junit.rules.TestRule;
+import org.junit.rules.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.handler.codec.http.HttpHeaders;
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler.HandshakeComplete;
+import io.netty5.handler.codec.http.HttpHeaders;
+import io.netty5.handler.codec.http.websocketx.WebSocketServerProtocolHandler.HandshakeComplete;
+import jakarta.jms.Connection;
+import jakarta.jms.InvalidClientIDException;
+import jakarta.jms.Session;
 
 /**
  * Test Client connection to Mock AMQP server.
@@ -63,7 +65,10 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
     @Rule
     public TestName test = new TestName();
 
-    @Test(timeout = 60 * 1000)
+    @Rule
+    public TestRule timeout = new DisableOnDebug(new Timeout(30, TimeUnit.SECONDS));
+
+    @Test
     public void testConnectToServer() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions())) {
             server.start();
@@ -82,7 +87,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60 * 1000)
+    @Test
     public void testServerEnforcesExclusiveContainerCapability() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions())) {
             server.setAllowNonSaslConnections(true);
@@ -112,7 +117,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60 * 1000)
+    @Test
     public void testConnectToServerFailsWhenSaslDisabled() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions())) {
             server.start();
@@ -133,7 +138,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60 * 1000)
+    @Test
     public void testConnectToServerWhenSaslDisabledAndServerAllowsIt() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions())) {
             server.setAllowNonSaslConnections(true);
@@ -153,7 +158,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 60 * 1000)
+    @Test
     public void testConnectToServerWhenRedirected() throws Exception {
         try (NettySimpleAmqpServer server = createServer(createServerOptions());
              NettySimpleAmqpServer redirect = createServer(createServerOptions())) {
@@ -218,7 +223,7 @@ public class NettyTcpToMockServerTest extends QpidJmsTestCase {
         }
     }
 
-    @Test(timeout = 20 * 1000)
+    @Test
     public void testConnectToWSServerWhenRedirectedWithNewPath() throws Exception {
         try (NettySimpleAmqpServer primary = createWSServer(createServerOptions());
              NettySimpleAmqpServer redirect = createWSServer(createServerOptions())) {

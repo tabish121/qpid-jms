@@ -37,11 +37,11 @@ import javax.net.ssl.SSLEngine;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.junit.Test;
 
-import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.handler.ssl.OpenSsl;
-import io.netty.handler.ssl.OpenSslEngine;
-import io.netty.handler.ssl.SslContext;
-import io.netty.handler.ssl.SslHandler;
+import io.netty5.buffer.api.DefaultBufferAllocators;
+import io.netty5.handler.ssl.OpenSsl;
+import io.netty5.handler.ssl.OpenSslEngine;
+import io.netty5.handler.ssl.SslContext;
+import io.netty5.handler.ssl.SslHandler;
 
 /**
  * Tests for the TransportSupport class.
@@ -98,7 +98,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         List<String> engineProtocols = Arrays.asList(engine.getEnabledProtocols());
@@ -349,7 +349,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         List<String> engineProtocols = Arrays.asList(engine.getEnabledProtocols());
@@ -379,7 +379,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         assertArrayEquals("Enabled protocols not as expected", ENABLED_OPENSSL_PROTOCOLS, engine.getEnabledProtocols());
@@ -409,7 +409,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         List<String> engineProtocols = Arrays.asList(engine.getEnabledProtocols());
@@ -439,7 +439,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         assertArrayEquals("Enabled protocols not as expected", ENABLED_OPENSSL_PROTOCOLS, engine.getEnabledProtocols());
@@ -481,7 +481,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         String[] trimmedProtocols = Arrays.copyOf(protocols, protocols.length - 1);
         options.setDisabledProtocols(disabledProtocol);
         SslContext context = TransportSupport.createOpenSslContext(options);
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
 
         // verify the option took effect
         assertNotNull(engine);
@@ -532,7 +532,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         options.setEnabledProtocols(enabledProtocols);
         options.setDisabledProtocols(disabledProtocol);
         SslContext context = TransportSupport.createOpenSslContext(options);
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
 
         // Because Netty cannot currently disable SSLv2Hello in OpenSSL we need to account for it popping up.
         ArrayList<String> remainingProtocolsList = new ArrayList<>(Arrays.asList(remainingProtocols));
@@ -584,7 +584,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         String[] enabledCipher = new String[] { cipher };
         options.setEnabledCipherSuites(enabledCipher);
         SslContext context = TransportSupport.createOpenSslContext(options);
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
 
         // verify the option took effect
         assertNotNull(engine);
@@ -627,7 +627,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         String[] trimmedCiphers = Arrays.copyOf(ciphers, ciphers.length - 1);
         options.setDisabledCipherSuites(disabledCipher);
         SslContext context = TransportSupport.createOpenSslContext(options);
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
 
         // verify the option took effect
         assertNotNull(engine);
@@ -678,7 +678,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         options.setEnabledCipherSuites(enabledCiphers);
         options.setDisabledCipherSuites(disabledCipher);
         SslContext context = TransportSupport.createOpenSslContext(options);
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
 
         // verify the option took effect, that the disabled ciphers were removed from the enabled list.
         assertNotNull(engine);
@@ -709,7 +709,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         List<String> engineProtocols = Arrays.asList(engine.getEnabledProtocols());
@@ -741,7 +741,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         assertArrayEquals("Enabled protocols not as expected", ENABLED_OPENSSL_PROTOCOLS, engine.getEnabledProtocols());
@@ -773,7 +773,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         assertEquals("HTTPS", engine.getSSLParameters().getEndpointIdentificationAlgorithm());
@@ -805,7 +805,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         SslContext context = TransportSupport.createOpenSslContext(options);
         assertNotNull(context);
 
-        SSLEngine engine = TransportSupport.createOpenSslEngine(PooledByteBufAllocator.DEFAULT, null, context, options);
+        SSLEngine engine = TransportSupport.createOpenSslEngine(DefaultBufferAllocators.preferredAllocator(), null, context, options);
         assertNotNull(engine);
 
         assertNull(engine.getSSLParameters().getEndpointIdentificationAlgorithm());
@@ -900,7 +900,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
         TransportOptions options = new TransportOptions();
         options.setUseOpenSSL(true);
 
-        SslHandler handler = TransportSupport.createSslHandler(PooledByteBufAllocator.DEFAULT, null, options);
+        SslHandler handler = TransportSupport.createSslHandler(DefaultBufferAllocators.preferredAllocator(), null, options);
         assertNotNull(handler);
         assertTrue(handler.engine() instanceof OpenSslEngine);
     }
@@ -985,7 +985,7 @@ public class TransportSupportTest extends QpidJmsTestCase {
 
     private SSLEngine createOpenSSLEngineDirectly(TransportOptions options) throws Exception {
         SslContext context = TransportSupport.createOpenSslContext(options);
-        SSLEngine engine = context.newEngine(PooledByteBufAllocator.DEFAULT);
+        SSLEngine engine = context.newEngine(DefaultBufferAllocators.preferredAllocator());
         return engine;
     }
 }
