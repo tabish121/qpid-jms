@@ -29,10 +29,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
-import jakarta.jms.JMSException;
-import jakarta.jms.JMSRuntimeException;
-import jakarta.jms.MessageFormatException;
-
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.exceptions.IdConversionException;
 import org.apache.qpid.jms.message.JmsMessage;
@@ -51,7 +47,10 @@ import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 import org.apache.qpid.proton.amqp.messaging.Properties;
 import org.apache.qpid.proton.amqp.messaging.Section;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
+import jakarta.jms.JMSException;
+import jakarta.jms.JMSRuntimeException;
+import jakarta.jms.MessageFormatException;
 
 public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
@@ -909,7 +908,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     }
 
     @Override
-    public ByteBuf encodeMessage() {
+    public Buffer encodeMessage() {
         return AmqpCodec.encodeMessage(this);
     }
 

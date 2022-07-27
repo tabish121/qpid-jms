@@ -37,7 +37,7 @@
   <properties>
     <!-- Dependency Versions for this Project -->
     <proton-version>0.33.10</proton-version>
-    <netty-version>4.1.78.Final</netty-version>
+    <netty5-version>5.0.0.Alpha4</netty5-version>
     <slf4j-version>1.7.36</slf4j-version>
     <jakarta.jms-api-version>3.1.0</jakarta.jms-api-version>
 
@@ -77,8 +77,8 @@
     <!-- surefire forked jvm arguments -->
     <argLine>-Xmx2g -enableassertions ${jacoco-config}</argLine>
 
-    <netty-transport-native-epoll-classifier>linux-x86_64</netty-transport-native-epoll-classifier>
-    <netty-transport-native-kqueue-classifier>osx-x86_64</netty-transport-native-kqueue-classifier>
+    <netty5-transport-native-epoll-classifier>linux-x86_64</netty5-transport-native-epoll-classifier>
+    <netty5-transport-native-kqueue-classifier>osx-x86_64</netty5-transport-native-kqueue-classifier>
   </properties>
 
   <issueManagement>
@@ -133,55 +133,61 @@
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-buffer</artifactId>
-        <version>${netty-version}</version>
+        <artifactId>netty5-buffer</artifactId>
+        <version>${netty5-version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-buffer</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-common</artifactId>
-        <version>${netty-version}</version>
+        <artifactId>netty5-common</artifactId>
+        <version>${netty5-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-handler</artifactId>
-        <version>${netty-version}</version>
+        <artifactId>netty5-handler</artifactId>
+        <version>${netty5-version}</version>
       </dependency>
       <dependency>
-        <groupId>io.netty</groupId>
+        <groupId>io.netty.contrib</groupId>
         <artifactId>netty-handler-proxy</artifactId>
-        <version>${netty-version}</version>
+        <version>5.0.0.Alpha1</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport</artifactId>
-        <version>${netty-version}</version>
+        <artifactId>netty5-transport</artifactId>
+        <version>${netty5-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport-classes-epoll</artifactId>
-        <version>${netty-version}</version>
+        <artifactId>netty5-transport-classes-epoll</artifactId>
+        <version>${netty5-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport-native-epoll</artifactId>
-        <version>${netty-version}</version>
-        <classifier>${netty-transport-native-epoll-classifier}</classifier>
+        <artifactId>netty5-transport-native-epoll</artifactId>
+        <version>${netty5-version}</version>
+        <classifier>${netty5-transport-native-epoll-classifier}</classifier>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport-classes-kqueue</artifactId>
-        <version>${netty-version}</version>
+        <artifactId>netty5-transport-classes-kqueue</artifactId>
+        <version>${netty5-version}</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-transport-native-kqueue</artifactId>
-        <version>${netty-version}</version>
-        <classifier>${netty-transport-native-kqueue-classifier}</classifier>
+        <artifactId>netty5-transport-native-kqueue</artifactId>
+        <version>${netty5-version}</version>
+        <classifier>${netty5-transport-native-kqueue-classifier}</classifier>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
-        <artifactId>netty-codec-http</artifactId>
-        <version>${netty-version}</version>
+        <artifactId>netty5-codec-http</artifactId>
+        <version>${netty5-version}</version>
       </dependency>
       <!--  Provided dependencies -->
       <dependency>

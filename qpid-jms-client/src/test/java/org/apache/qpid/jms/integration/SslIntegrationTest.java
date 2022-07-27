@@ -33,8 +33,6 @@ import java.net.Socket;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 
-import jakarta.jms.Connection;
-import jakarta.jms.JMSException;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
@@ -49,7 +47,9 @@ import org.apache.qpid.jms.transports.TransportSupport;
 import org.apache.qpid.jms.transports.netty.NettySimpleAmqpServer;
 import org.junit.Test;
 
-import io.netty.handler.ssl.OpenSsl;
+import io.netty5.handler.ssl.OpenSsl;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
 
 public class SslIntegrationTest extends QpidJmsTestCase {
 

@@ -40,13 +40,13 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufUtil;
-import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.HttpHeaders;
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler.HandshakeComplete;
-import io.netty.handler.proxy.HttpProxyHandler;
-import io.netty.handler.proxy.ProxyHandler;
+import io.netty.contrib.handler.proxy.HttpProxyHandler;
+import io.netty.contrib.handler.proxy.ProxyHandler;
+import io.netty5.buffer.BufferUtil;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.BufferAllocator;
+import io.netty5.handler.codec.http.HttpHeaders;
+import io.netty5.handler.codec.http.websocketx.WebSocketServerHandshakeCompletionEvent;
 
 /**
  * Test the Netty based WebSocket Transport
@@ -137,9 +137,9 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
     public void testConnectionsSendReceiveLargeDataWhenFrameSizeAllowsIt() throws Exception {
         final int FRAME_SIZE = 8192;
 
-        ByteBuf sendBuffer = Unpooled.buffer(FRAME_SIZE);
+        Buffer sendBuffer = BufferAllocator.onHeapUnpooled().allocate(FRAME_SIZE);
         for (int i = 0; i < FRAME_SIZE; ++i) {
-            sendBuffer.writeByte('A');
+            sendBuffer.writeByte((byte) 'A');
         }
 
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
@@ -183,9 +183,9 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
     public void testConnectionReceivesFragmentedData() throws Exception {
         final int FRAME_SIZE = 5317;
 
-        ByteBuf sendBuffer = Unpooled.buffer(FRAME_SIZE);
+        Buffer sendBuffer = BufferAllocator.onHeapUnpooled().allocate(FRAME_SIZE);
         for (int i = 0; i < FRAME_SIZE; ++i) {
-            sendBuffer.writeByte('A' + (i % 10));
+            sendBuffer.writeByte((byte) ('A' + (i % 10)));
         }
 
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
@@ -228,16 +228,16 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
 
             assertEquals("Expected 2 data packets due to seperate websocket frames", 2, data.size());
 
-            ByteBuf receivedBuffer = Unpooled.buffer(FRAME_SIZE);
-            for(ByteBuf buf : data) {
-               buf.readBytes(receivedBuffer, buf.readableBytes());
+            Buffer receivedBuffer = BufferAllocator.onHeapUnpooled().allocate(FRAME_SIZE);
+            for (Buffer buf : data) {
+               receivedBuffer.writeBytes(buf);
             }
 
             assertEquals("Unexpected data length", FRAME_SIZE, receivedBuffer.readableBytes());
-            assertTrue("Unexpected data", ByteBufUtil.equals(sendBuffer, 0, receivedBuffer, 0, FRAME_SIZE));
+            assertTrue("Unexpected data", BufferUtil.equals(sendBuffer, 0, receivedBuffer, 0, FRAME_SIZE));
         } finally {
-            for (ByteBuf buf : data) {
-                buf.release();
+            for (Buffer buf : data) {
+                buf.close();
             }
         }
 
@@ -248,9 +248,9 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
     public void testConnectionsSendReceiveLargeDataFailsDueToMaxFrameSize() throws Exception {
         final int FRAME_SIZE = 1024;
 
-        ByteBuf sendBuffer = Unpooled.buffer(FRAME_SIZE);
+        Buffer sendBuffer = BufferAllocator.onHeapUnpooled().allocate(FRAME_SIZE);
         for (int i = 0; i < FRAME_SIZE; ++i) {
-            sendBuffer.writeByte('A');
+            sendBuffer.writeByte((byte) 'A');
         }
 
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
@@ -285,9 +285,9 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
     public void testTransportDetectsConnectionDropWhenServerEnforcesMaxFrameSize() throws Exception {
         final int FRAME_SIZE = 1024;
 
-        ByteBuf sendBuffer = Unpooled.buffer(FRAME_SIZE);
+        Buffer sendBuffer = BufferAllocator.onHeapUnpooled().allocate(FRAME_SIZE);
         for (int i = 0; i < FRAME_SIZE; ++i) {
-            sendBuffer.writeByte('A');
+            sendBuffer.writeByte((byte) 'A');
         }
 
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
@@ -377,7 +377,7 @@ public class NettyWsTransportTest extends NettyTcpTransportTest {
             assertEquals(serverLocation, transport.getRemoteLocation());
 
             assertTrue("HandshakeCompletion not set within given time", server.awaitHandshakeCompletion(2000));
-            HandshakeComplete handshake = server.getHandshakeComplete();
+            WebSocketServerHandshakeCompletionEvent handshake = server.getHandshakeComplete();
             assertNotNull("completion should not be null", handshake);
             HttpHeaders requestHeaders = handshake.requestHeaders();
 

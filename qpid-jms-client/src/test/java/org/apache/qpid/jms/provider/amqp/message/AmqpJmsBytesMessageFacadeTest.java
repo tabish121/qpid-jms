@@ -44,9 +44,9 @@ import org.apache.qpid.proton.message.Message;
 import org.junit.Test;
 import org.mockito.Mockito;
 
-import io.netty.buffer.ByteBufInputStream;
-import io.netty.buffer.ByteBufOutputStream;
-import io.netty.buffer.Unpooled;
+import io.netty5.buffer.BufferInputStream;
+import io.netty5.buffer.BufferOutputStream;
+import io.netty5.buffer.api.BufferAllocator;
 
 /**
  * Tests for class AmqpJmsBytesMessageFacade
@@ -612,7 +612,7 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     }
 
     private InputStream substituteMockInputStream(AmqpJmsBytesMessageFacade bytesMessage) throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
-        InputStream mock = Mockito.mock(ByteBufInputStream.class);
+        InputStream mock = Mockito.mock(BufferInputStream.class);
 
         Field ishField = bytesMessage.getClass().getDeclaredField("bytesIn");
         ishField.setAccessible(true);
@@ -622,8 +622,8 @@ public class AmqpJmsBytesMessageFacadeTest extends AmqpJmsMessageTypesTestCase {
     }
 
     private OutputStream substituteMockOutputStream(AmqpJmsBytesMessageFacade bytesMessage) throws NoSuchFieldException, SecurityException, IllegalArgumentException, IllegalAccessException {
-        ByteBufOutputStream mock = Mockito.mock(ByteBufOutputStream.class);
-        Mockito.when(mock.buffer()).thenReturn(Unpooled.EMPTY_BUFFER);
+        BufferOutputStream mock = Mockito.mock(BufferOutputStream.class);
+        Mockito.when(mock.buffer()).thenReturn(BufferAllocator.offHeapUnpooled().allocate(0).makeReadOnly());
 
         Field oshField = bytesMessage.getClass().getDeclaredField("bytesOut");
         oshField.setAccessible(true);

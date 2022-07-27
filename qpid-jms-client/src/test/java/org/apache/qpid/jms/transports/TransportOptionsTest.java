@@ -30,7 +30,7 @@ import org.apache.qpid.jms.test.QpidJmsTestCase;
 import org.junit.Test;
 import org.mockito.Mockito;
 
-import io.netty.handler.proxy.ProxyHandler;
+import io.netty.contrib.handler.proxy.ProxyHandler;
 
 /**
  * Test for class TransportOptions

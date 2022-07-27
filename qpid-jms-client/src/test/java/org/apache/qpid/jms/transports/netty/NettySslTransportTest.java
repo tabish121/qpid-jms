@@ -44,9 +44,9 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.handler.proxy.HttpProxyHandler;
-import io.netty.handler.proxy.ProxyHandler;
-import io.netty.handler.proxy.Socks5ProxyHandler;
+import io.netty.contrib.handler.proxy.HttpProxyHandler;
+import io.netty.contrib.handler.proxy.ProxyHandler;
+import io.netty.contrib.handler.proxy.Socks5ProxyHandler;
 
 /**
  * Test basic functionality of the Netty based TCP Transport ruuing in secure mode (SSL).
@@ -188,7 +188,8 @@ public class NettySslTransportTest extends NettyTcpTransportTest {
             assertTrue(transport.isSecure());
 
             // Verify there was a certificate sent to the server
-            assertTrue("Server handshake did not complete in alotted time", server.getSslHandler().handshakeFuture().await(2, TimeUnit.SECONDS));
+            assertTrue("Server handshake did not complete in alotted time",
+                       server.getSslHandler().handshakeFuture().asStage().await(2, TimeUnit.SECONDS));
             assertNotNull(server.getSslHandler().engine().getSession().getPeerCertificates());
 
             transport.close();
@@ -228,7 +229,8 @@ public class NettySslTransportTest extends NettyTcpTransportTest {
             assertTrue(transport.isConnected());
             assertTrue(transport.isSecure());
 
-            assertTrue("Server handshake did not complete in alotted time", server.getSslHandler().handshakeFuture().await(2, TimeUnit.SECONDS));
+            assertTrue("Server handshake did not complete in alotted time",
+                       server.getSslHandler().handshakeFuture().asStage().await(2, TimeUnit.SECONDS));
 
             Certificate[] peerCertificates = server.getSslHandler().engine().getSession().getPeerCertificates();
             assertNotNull(peerCertificates);

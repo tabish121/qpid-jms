@@ -36,8 +36,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import jakarta.jms.DeliveryMode;
-
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.JmsQueue;
 import org.apache.qpid.jms.JmsTemporaryQueue;
@@ -69,7 +67,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
+import jakarta.jms.DeliveryMode;
 
 public class AmqpCodecTest extends QpidJmsTestCase {
 
@@ -93,7 +92,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
     public void testEncodeEmptyHeaderAndDecode() {
         Header empty = new Header();
 
-        ByteBuf encoded = AmqpCodec.encode(empty);
+        Buffer encoded = AmqpCodec.encode(empty);
         Header decoded = (Header) AmqpCodec.decode(encoded);
 
         assertNotNull(decoded);
@@ -112,7 +111,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         AmqpHeader header = new AmqpHeader();
         header.setDurable(true);
 
-        ByteBuf encoded = AmqpCodec.encode(header.getHeader());
+        Buffer encoded = AmqpCodec.encode(header.getHeader());
         AmqpHeader decoded = new AmqpHeader((Header) AmqpCodec.decode(encoded));
 
         assertTrue(decoded.isDurable());
@@ -127,7 +126,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         AmqpHeader header = new AmqpHeader();
         header.setDeliveryCount(1);
 
-        ByteBuf encoded = AmqpCodec.encode(header.getHeader());
+        Buffer encoded = AmqpCodec.encode(header.getHeader());
         AmqpHeader decoded = new AmqpHeader((Header) AmqpCodec.decode(encoded));
 
         assertFalse(decoded.isDurable());
@@ -146,7 +145,7 @@ public class AmqpCodecTest extends QpidJmsTestCase {
         header.setPriority(9);
         header.setTimeToLive(32768);
 
-        ByteBuf encoded = AmqpCodec.encode(header.getHeader());
+        Buffer encoded = AmqpCodec.encode(header.getHeader());
         AmqpHeader decoded = new AmqpHeader((Header) AmqpCodec.decode(encoded));
 
         assertTrue(decoded.isDurable());

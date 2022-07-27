@@ -57,7 +57,7 @@ import org.apache.qpid.proton.codec.EncoderImpl;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
 
 /**
  * AMQP Codec class used to hide the details of encode / decode
@@ -112,7 +112,7 @@ public final class AmqpCodec {
      *
      * @return a buffer holding the encoded bytes of the given AMQP Section object.
      */
-    public static ByteBuf encode(Section section) {
+    public static Buffer encode(Section section) {
         if (section == null) {
             return null;
         }
@@ -124,7 +124,7 @@ public final class AmqpCodec {
         encoder.writeObject(section);
         encoder.setByteBuffer((WritableBuffer) null);
 
-        return buffer.getBuffer();
+        return buffer.getBuffer().makeReadOnly();
     }
 
     /**
@@ -135,16 +135,16 @@ public final class AmqpCodec {
      *
      * @return a Section object read from its encoded form.
      */
-    public static Section decode(ByteBuf encoded) {
-        if (encoded == null || !encoded.isReadable()) {
+    public static Section decode(Buffer encoded) {
+        if (encoded == null || encoded.readableBytes() <= 0) {
             return null;
         }
 
         DecoderImpl decoder = TLS_CODEC.get().decoder;
-        decoder.setByteBuffer(encoded.nioBuffer());
+        decoder.setBuffer(new AmqpReadableBuffer(encoded));
         Section result = (Section) decoder.readObject();
         decoder.setByteBuffer(null);
-        encoded.resetReaderIndex();
+        encoded.readerOffset(0);
 
         return result;
     }
@@ -158,7 +158,7 @@ public final class AmqpCodec {
      *
      * @return a buffer containing the wire level representation of the input Message.
      */
-    public static ByteBuf encodeMessage(AmqpJmsMessageFacade message) {
+    public static Buffer encodeMessage(AmqpJmsMessageFacade message) {
         EncoderDecoderContext context = TLS_CODEC.get();
 
         AmqpWritableBuffer buffer = new AmqpWritableBuffer();
@@ -204,7 +204,7 @@ public final class AmqpCodec {
 
         encoder.setByteBuffer((WritableBuffer) null);
 
-        return buffer.getBuffer();
+        return buffer.getBuffer().makeReadOnly();
     }
 
     private static ReadableBuffer getCachedMessageAnnotationsBuffer(AmqpJmsMessageFacade message, EncoderDecoderContext context) {

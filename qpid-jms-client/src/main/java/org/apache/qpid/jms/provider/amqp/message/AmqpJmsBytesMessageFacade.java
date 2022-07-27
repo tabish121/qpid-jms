@@ -23,9 +23,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-import jakarta.jms.IllegalStateException;
-import jakarta.jms.JMSException;
-
 import org.apache.qpid.jms.message.JmsBytesMessage;
 import org.apache.qpid.jms.message.facade.JmsBytesMessageFacade;
 import org.apache.qpid.proton.amqp.Binary;
@@ -33,10 +30,12 @@ import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.Section;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
-import io.netty.buffer.ByteBufOutputStream;
-import io.netty.buffer.Unpooled;
+import io.netty5.buffer.BufferInputStream;
+import io.netty5.buffer.BufferOutputStream;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.BufferAllocator;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
 
 /**
  * A JmsBytesMessageFacade that wraps around Proton AMQP Message instances to provide
@@ -47,8 +46,8 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
     private static final Binary EMPTY_BINARY = new Binary(new byte[0]);
     private static final Data EMPTY_BODY = new Data(EMPTY_BINARY);
 
-    private transient ByteBufInputStream bytesIn;
-    private transient ByteBufOutputStream bytesOut;
+    private transient BufferInputStream bytesIn;
+    private transient BufferOutputStream bytesOut;
 
     @Override
     protected void initializeEmptyBody() {
@@ -106,8 +105,9 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
         if (bytesIn == null) {
             Binary body = getBinaryFromBody();
             // Duplicate the content buffer to allow for getBodyLength() validity.
-            bytesIn = new ByteBufInputStream(
-                Unpooled.wrappedBuffer(body.getArray(), body.getArrayOffset(), body.getLength()));
+            Buffer bodyBuffer = BufferAllocator.onHeapUnpooled().allocate(body.getLength());
+            bodyBuffer.writeBytes(body.getArray(), body.getArrayOffset(), body.getLength());
+            bytesIn = new BufferInputStream(bodyBuffer.send());
         }
 
         return bytesIn;
@@ -120,7 +120,7 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
         }
 
         if (bytesOut == null) {
-            bytesOut = new ByteBufOutputStream(Unpooled.buffer());
+            bytesOut = new BufferOutputStream(BufferAllocator.onHeapUnpooled().allocate(64));
             setBody(EMPTY_BODY);
         }
 
@@ -130,8 +130,10 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
     @Override
     public void reset() {
         if (bytesOut != null) {
-            ByteBuf writeBuf = bytesOut.buffer();
-            Binary body = new Binary(writeBuf.array(), writeBuf.arrayOffset(), writeBuf.readableBytes());
+            Buffer writeBuf = bytesOut.buffer();
+            byte[] copy = new byte[writeBuf.readableBytes()];
+            writeBuf.copyInto(writeBuf.readerOffset(), copy, 0, copy.length);
+            Binary body = new Binary(copy, 0, copy.length);
             setBody(new Data(body));
             try {
                 bytesOut.close();

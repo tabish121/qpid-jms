@@ -22,8 +22,8 @@ import java.nio.charset.StandardCharsets;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+import io.netty5.buffer.api.Buffer;
+import io.netty5.buffer.api.BufferAllocator;
 
 /**
  * Writable Buffer implementation based on a Netty ByteBuf
@@ -32,17 +32,17 @@ public class AmqpWritableBuffer implements WritableBuffer {
 
     public static final int INITIAL_CAPACITY = 1024;
 
-    public ByteBuf nettyBuffer;
+    public Buffer nettyBuffer;
 
     public AmqpWritableBuffer() {
-        nettyBuffer = Unpooled.buffer(INITIAL_CAPACITY);
+        nettyBuffer = BufferAllocator.onHeapUnpooled().allocate(INITIAL_CAPACITY);
     }
 
-    public AmqpWritableBuffer(ByteBuf buffer) {
+    public AmqpWritableBuffer(Buffer buffer) {
         nettyBuffer = buffer;
     }
 
-    public ByteBuf getBuffer() {
+    public Buffer getBuffer() {
         return nettyBuffer;
     }
 
@@ -71,7 +71,7 @@ public class AmqpWritableBuffer implements WritableBuffer {
         nettyBuffer.writeBytes(payload);
     }
 
-    public void put(ByteBuf payload) {
+    public void put(Buffer payload) {
         nettyBuffer.writeBytes(payload);
     }
 
@@ -97,12 +97,12 @@ public class AmqpWritableBuffer implements WritableBuffer {
 
     @Override
     public boolean hasRemaining() {
-        return nettyBuffer.writerIndex() < nettyBuffer.maxCapacity();
+        return nettyBuffer.writerOffset() < nettyBuffer.capacity();
     }
 
     @Override
     public int remaining() {
-        return nettyBuffer.maxCapacity() - nettyBuffer.writerIndex();
+        return nettyBuffer.capacity() - nettyBuffer.writerOffset();
     }
 
     @Override
@@ -112,12 +112,12 @@ public class AmqpWritableBuffer implements WritableBuffer {
 
     @Override
     public int position() {
-        return nettyBuffer.writerIndex();
+        return nettyBuffer.writerOffset();
     }
 
     @Override
     public void position(int position) {
-        nettyBuffer.writerIndex(position);
+        nettyBuffer.writerOffset(position);
     }
 
     @Override

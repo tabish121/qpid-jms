@@ -39,14 +39,14 @@ import javax.net.ssl.X509ExtendedKeyManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.handler.ssl.OpenSsl;
-import io.netty.handler.ssl.OpenSslX509KeyManagerFactory;
-import io.netty.handler.ssl.SslContext;
-import io.netty.handler.ssl.SslContextBuilder;
-import io.netty.handler.ssl.SslHandler;
-import io.netty.handler.ssl.SslProvider;
-import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+import io.netty5.buffer.api.BufferAllocator;
+import io.netty5.handler.ssl.OpenSsl;
+import io.netty5.handler.ssl.OpenSslX509KeyManagerFactory;
+import io.netty5.handler.ssl.SslContext;
+import io.netty5.handler.ssl.SslContextBuilder;
+import io.netty5.handler.ssl.SslHandler;
+import io.netty5.handler.ssl.SslProvider;
+import io.netty5.handler.ssl.util.InsecureTrustManagerFactory;
 
 /**
  * Static class that provides various utility methods used by Transport implementations.
@@ -107,7 +107,7 @@ public class TransportSupport {
      *
      * @throws Exception if an error occurs while creating the SslHandler instance.
      */
-    public static SslHandler createSslHandler(ByteBufAllocator allocator, URI remote, TransportOptions options) throws Exception {
+    public static SslHandler createSslHandler(BufferAllocator allocator, URI remote, TransportOptions options) throws Exception {
         final SSLEngine sslEngine;
 
         if (isOpenSSLPossible(options)) {
@@ -249,7 +249,7 @@ public class TransportSupport {
      *
      * @throws Exception if an error occurs while creating the new SSLEngine.
      */
-    public static SSLEngine createOpenSslEngine(ByteBufAllocator allocator, URI remote, SslContext context, TransportOptions options) throws Exception {
+    public static SSLEngine createOpenSslEngine(BufferAllocator allocator, URI remote, SslContext context, TransportOptions options) throws Exception {
         SSLEngine engine = null;
 
         if (allocator == null) {

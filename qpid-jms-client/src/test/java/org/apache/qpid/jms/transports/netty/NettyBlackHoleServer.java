@@ -20,9 +20,9 @@ import org.apache.qpid.jms.transports.TransportOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty5.channel.ChannelHandler;
+import io.netty5.channel.ChannelHandlerAdapter;
+import io.netty5.channel.ChannelHandlerContext;
 
 public class NettyBlackHoleServer extends NettyServer {
 
@@ -37,7 +37,7 @@ public class NettyBlackHoleServer extends NettyServer {
         return new BlackHoleInboundHandler();
     }
 
-    private class BlackHoleInboundHandler extends ChannelInboundHandlerAdapter  {
+    private class BlackHoleInboundHandler extends ChannelHandlerAdapter  {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {

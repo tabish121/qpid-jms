@@ -24,20 +24,33 @@ import java.nio.charset.StandardCharsets;
 import org.apache.qpid.proton.codec.ReadableBuffer;
 import org.apache.qpid.proton.codec.WritableBuffer;
 
-import io.netty.buffer.ByteBuf;
+import io.netty5.buffer.api.Buffer;
 
 /**
- * ReadableBuffer implementation that wraps a Netty ByteBuf
+ * ReadableBuffer implementation that wraps a Netty ByteBuf, the wrapped buffer
+ * is copied as a read-only buffer meaning that it maintains a separate read offset
+ * marker from that of the buffer used to create this instance.
  */
 public class AmqpReadableBuffer implements ReadableBuffer {
 
-    private ByteBuf buffer;
+    private static final int NOT_SET = -1;
 
-    public AmqpReadableBuffer(ByteBuf buffer) {
-        this.buffer = buffer;
+    private Buffer buffer;
+
+    private int markIndex = NOT_SET;
+    private int readLimit;
+
+    public AmqpReadableBuffer(Buffer buffer) {
+        this.buffer = buffer.copy(true);
+        this.readLimit = buffer.writerOffset();
     }
 
-    public ByteBuf getBuffer() {
+    AmqpReadableBuffer(Buffer buffer, int readLimit) {
+        this.buffer = buffer;
+        this.readLimit = buffer.writerOffset();
+    }
+
+    public Buffer getBuffer() {
         return buffer;
     }
 
@@ -48,17 +61,17 @@ public class AmqpReadableBuffer implements ReadableBuffer {
 
     @Override
     public boolean hasArray() {
-        return buffer.hasArray();
+        return false;
     }
 
     @Override
     public byte[] array() {
-        return buffer.array();
+        return null;
     }
 
     @Override
     public int arrayOffset() {
-        return buffer.arrayOffset();
+        return -1;
     }
 
     @Override
@@ -68,6 +81,9 @@ public class AmqpReadableBuffer implements ReadableBuffer {
 
     @Override
     public byte get() {
+        if (buffer.readerOffset() + Byte.BYTES > readLimit) {
+            throw new IndexOutOfBoundsException("Cannot read past buffer read limit: " + readLimit);
+        }
         return buffer.readByte();
     }
 
@@ -78,142 +94,198 @@ public class AmqpReadableBuffer implements ReadableBuffer {
 
     @Override
     public int getInt() {
+        if (buffer.readerOffset() + Integer.BYTES > readLimit) {
+            throw new IndexOutOfBoundsException("Cannot read past buffer read limit: " + readLimit);
+        }
+
         return buffer.readInt();
     }
 
     @Override
     public long getLong() {
+        if (buffer.readerOffset() + Long.BYTES > readLimit) {
+            throw new IndexOutOfBoundsException("Cannot read past buffer read limit: " + readLimit);
+        }
+
         return buffer.readLong();
     }
 
     @Override
     public short getShort() {
+        if (buffer.readerOffset() + Short.BYTES > readLimit) {
+            throw new IndexOutOfBoundsException("Cannot read past buffer read limit: " + readLimit);
+        }
+
         return buffer.readShort();
     }
 
     @Override
     public float getFloat() {
+        if (buffer.readerOffset() + Float.BYTES > readLimit) {
+            throw new IndexOutOfBoundsException("Cannot read past buffer read limit: " + readLimit);
+        }
+
         return buffer.readFloat();
     }
 
     @Override
     public double getDouble() {
+        if (buffer.readerOffset() + Double.BYTES > readLimit) {
+            throw new IndexOutOfBoundsException("Cannot read past buffer read limit: " + readLimit);
+        }
+
         return buffer.readDouble();
     }
 
     @Override
     public ReadableBuffer get(byte[] target, int offset, int length) {
+        if (buffer.readerOffset() + length > readLimit) {
+            throw new IndexOutOfBoundsException("Cannot read past buffer read limit: " + readLimit);
+        }
+
         buffer.readBytes(target, offset, length);
         return this;
     }
 
     @Override
     public ReadableBuffer get(byte[] target) {
-        buffer.readBytes(target);
+        if (buffer.readerOffset() + target.length > readLimit) {
+            throw new IndexOutOfBoundsException("Cannot read past buffer read limit: " + readLimit);
+        }
+
+        buffer.copyInto(buffer.readerOffset(), target, 0, target.length);
+        buffer.skipReadableBytes(target.length);
         return this;
     }
 
     @Override
     public ReadableBuffer get(WritableBuffer target) {
-        int start = target.position();
-
-        if (buffer.hasArray()) {
-            target.put(buffer.array(), buffer.arrayOffset() + buffer.readerIndex(), buffer.readableBytes());
+        if (target instanceof AmqpWritableBuffer) {
+            AmqpWritableBuffer targetWB = (AmqpWritableBuffer) target;
+            targetWB.getBuffer().writeBytes(buffer);
         } else {
-            target.put(buffer.nioBuffer());
+            while (buffer.readableBytes() > 0 && buffer.readerOffset() < readLimit) {
+                target.put(buffer.readByte());
+            }
         }
-
-        int written = target.position() - start;
-
-        buffer.readerIndex(buffer.readerIndex() + written);
 
         return this;
     }
 
     @Override
     public ReadableBuffer slice() {
-        return new AmqpReadableBuffer(buffer.slice());
+        return new AmqpReadableBuffer(buffer.copy(buffer.readerOffset(), readLimit - buffer.readerOffset(), true));
     }
 
     @Override
     public ReadableBuffer flip() {
-        buffer.setIndex(0, buffer.readerIndex());
+        readLimit = buffer.readerOffset();
+        buffer.readerOffset(0);
         return this;
     }
 
     @Override
     public ReadableBuffer limit(int limit) {
-        buffer.writerIndex(limit);
+        if (limit > buffer.capacity() | limit < 0) {
+            throw new IllegalArgumentException("Provided limit is invalid: " + limit);
+        }
+        this.readLimit = limit;
+
+        if (buffer.readerOffset() > limit) {
+            buffer.readerOffset(limit);
+        }
+        if (markIndex > limit) {
+            markIndex = NOT_SET;
+        }
+
+        readLimit = limit;
         return this;
     }
 
     @Override
     public int limit() {
-        return buffer.writerIndex();
+        return readLimit;
     }
 
     @Override
     public ReadableBuffer position(int position) {
-        buffer.readerIndex(position);
+        if (position > readLimit | position < 0) {
+            throw new IndexOutOfBoundsException("Cannot set position of buffer past the read limit: " + readLimit);
+        }
+
+        if (markIndex > position) {
+            markIndex = NOT_SET;
+        }
+
+        buffer.readerOffset(position);
         return this;
     }
 
     @Override
     public int position() {
-        return buffer.readerIndex();
+        return buffer.readerOffset();
     }
 
     @Override
     public ReadableBuffer mark() {
-        buffer.markReaderIndex();
+        markIndex = buffer.readerOffset();
         return this;
     }
 
     @Override
     public ReadableBuffer reset() {
-        buffer.resetReaderIndex();
+        if (markIndex != NOT_SET) {
+            buffer.readerOffset(markIndex);
+        }
         return this;
     }
 
     @Override
     public ReadableBuffer rewind() {
-        buffer.readerIndex(0);
+        buffer.readerOffset(0);
+        markIndex = NOT_SET;
         return this;
     }
 
     @Override
     public ReadableBuffer clear() {
-        buffer.setIndex(0, buffer.capacity());
+        buffer.readerOffset(0);
+        readLimit = buffer.writerOffset();
+        markIndex = NOT_SET;
         return this;
     }
 
     @Override
     public int remaining() {
-        return buffer.readableBytes();
+        return readLimit - buffer.readerOffset();
     }
 
     @Override
     public boolean hasRemaining() {
-        return buffer.isReadable();
+        return readLimit - buffer.readerOffset() > 0;
     }
 
     @Override
     public ReadableBuffer duplicate() {
-        return new AmqpReadableBuffer(buffer.duplicate());
+        return new AmqpReadableBuffer(buffer.copy(true), readLimit);
     }
 
     @Override
     public ByteBuffer byteBuffer() {
-        return buffer.nioBuffer();
+        ByteBuffer copy = ByteBuffer.allocate(buffer.readableBytes());
+
+        buffer.copyInto(buffer.readerOffset(), copy, 0, copy.capacity());
+
+        return copy;
     }
 
     @Override
     public String readUTF8() throws CharacterCodingException {
-        return buffer.readCharSequence(buffer.readableBytes(), StandardCharsets.UTF_8).toString();
+        return buffer.readCharSequence(readLimit - buffer.readerOffset(), StandardCharsets.UTF_8).toString();
     }
 
     @Override
     public String readString(CharsetDecoder decoder) throws CharacterCodingException {
-        return buffer.readCharSequence(buffer.readableBytes(), decoder.charset()).toString();
+        return buffer.readCharSequence(readLimit - buffer.readerOffset(), decoder.charset()).toString();
     }
 }
