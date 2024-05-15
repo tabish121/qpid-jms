@@ -1519,9 +1519,23 @@ public class TestAmqpPeer implements AutoCloseable
         expectReceiverAttach(linkNameMatcher, sourceMatcher, settled, refuseLink, omitDetach, deferAttachResponseWrite, errorType, errorMessage, null, null, null);
     }
 
+    public void expectReceiverAttach(Matcher<?> linkNameMatcher, Matcher<?> sourceMatcher,
+                                     Matcher<?> desiredCapabilitiesMatcher, Symbol[] offeredCapabilitiesResponse,
+                                     Matcher<?> offeredCapabilitiesMatcher, Symbol[] desiredCapabilitiesResponse) {
+        expectReceiverAttach(linkNameMatcher, sourceMatcher, false, false, false, false, null, null, null, desiredCapabilitiesMatcher, offeredCapabilitiesResponse, offeredCapabilitiesMatcher, desiredCapabilitiesResponse);
+    }
+
     private void expectReceiverAttach(final Matcher<?> linkNameMatcher, final Matcher<?> sourceMatcher, final boolean settled, final boolean refuseLink,
-                                     boolean omitDetach, boolean deferAttachResponseWrite, Symbol errorType, String errorMessage, final Source responseSourceOverride,
-                                     Matcher<?> desiredCapabilitiesMatcher, Symbol[] offeredCapabilitiesResponse)
+            boolean omitDetach, boolean deferAttachResponseWrite, Symbol errorType, String errorMessage, final Source responseSourceOverride,
+            Matcher<?> desiredCapabilitiesMatcher, Symbol[] offeredCapabilitiesResponse)
+    {
+        expectReceiverAttach(linkNameMatcher, sourceMatcher, settled, refuseLink, omitDetach, deferAttachResponseWrite, errorType, errorMessage, responseSourceOverride, desiredCapabilitiesMatcher, offeredCapabilitiesResponse, null, null);
+    }
+
+    private void expectReceiverAttach(final Matcher<?> linkNameMatcher, final Matcher<?> sourceMatcher, final boolean settled, final boolean refuseLink,
+            boolean omitDetach, boolean deferAttachResponseWrite, Symbol errorType, String errorMessage, final Source responseSourceOverride,
+            Matcher<?> desiredCapabilitiesMatcher, Symbol[] offeredCapabilitiesResponse,
+            Matcher<?> offeredCapabilitiesMatcher, Symbol[] desiredCapabilitiesResponse)
     {
         final AttachMatcher attachMatcher = new AttachMatcher()
                 .withName(linkNameMatcher)
@@ -1535,10 +1549,14 @@ public class TestAmqpPeer implements AutoCloseable
         if(desiredCapabilitiesMatcher != null) {
             attachMatcher.withDesiredCapabilities(desiredCapabilitiesMatcher);
         }
+        if(offeredCapabilitiesMatcher != null) {
+            attachMatcher.withOfferedCapabilities(offeredCapabilitiesMatcher);
+        }
 
         final AttachFrame attachResponse = new AttachFrame()
                             .setRole(Role.SENDER)
                             .setOfferedCapabilities(offeredCapabilitiesResponse)
+                            .setDesiredCapabilities(desiredCapabilitiesResponse)
                             .setSndSettleMode(settled ? SenderSettleMode.SETTLED : SenderSettleMode.UNSETTLED)
                             .setRcvSettleMode(ReceiverSettleMode.FIRST)
                             .setInitialDeliveryCount(UnsignedInteger.ZERO);
@@ -1870,8 +1888,8 @@ public class TestAmqpPeer implements AutoCloseable
             boolean addMessageNumberProperty)
     {
         expectLinkFlowAndSendBackMessages(headerDescribedType, messageAnnotationsDescribedType, propertiesDescribedType,
-                                                appPropertiesDescribedType, content, count, drain, sendDrainFlowResponse,
-                                                creditMatcher, nextIncomingId, sendSettled, addMessageNumberProperty, 0, false);
+                                          appPropertiesDescribedType, content, count, drain, sendDrainFlowResponse,
+                                          creditMatcher, nextIncomingId, sendSettled, addMessageNumberProperty, 0, false);
     }
 
     public void expectLinkFlowAndSendBackMessages(final HeaderDescribedType headerDescribedType,
@@ -1888,6 +1906,40 @@ public class TestAmqpPeer implements AutoCloseable
             boolean addMessageNumberProperty,
             int msgPayloadPerFrame,
             boolean sendFinalTransferFrameWithoutPayload)
+    {
+        expectLinkFlowAndSendBackMessages(headerDescribedType, messageAnnotationsDescribedType, propertiesDescribedType,
+                appPropertiesDescribedType, content, count, drain, sendDrainFlowResponse,
+                creditMatcher, nextIncomingId, sendSettled, addMessageNumberProperty, msgPayloadPerFrame,
+                sendFinalTransferFrameWithoutPayload, 0);
+    }
+
+    public void expectLinkFlowRespondWithTransfer(HeaderDescribedType headerDescribedType,
+                                                  MessageAnnotationsDescribedType messageAnnotationsDescribedType,
+                                                  PropertiesDescribedType propertiesDescribedType,
+                                                  ApplicationPropertiesDescribedType appPropertiesDescribedType,
+                                                  DescribedType content, boolean sendSettled, int messageFormat)
+    {
+        expectLinkFlowAndSendBackMessages(headerDescribedType, messageAnnotationsDescribedType, propertiesDescribedType,
+                                          appPropertiesDescribedType, content, 1, false, false,
+                                          Matchers.greaterThanOrEqualTo(UnsignedInteger.valueOf(1)),
+                                          1, sendSettled, false, 0, false, messageFormat);
+    }
+
+    public void expectLinkFlowAndSendBackMessages(final HeaderDescribedType headerDescribedType,
+            final MessageAnnotationsDescribedType messageAnnotationsDescribedType,
+            final PropertiesDescribedType propertiesDescribedType,
+            ApplicationPropertiesDescribedType appPropertiesDescribedType,
+            final DescribedType content,
+            final int count,
+            final boolean drain,
+            final boolean sendDrainFlowResponse,
+            Matcher<UnsignedInteger> creditMatcher,
+            final Integer nextIncomingId,
+            final boolean sendSettled,
+            boolean addMessageNumberProperty,
+            int msgPayloadPerFrame,
+            boolean sendFinalTransferFrameWithoutPayload,
+            int messageFormat)
     {
         if (nextIncomingId == null && count > 0)
         {
@@ -1948,7 +2000,7 @@ public class TestAmqpPeer implements AutoCloseable
                 final TransferFrame transferFrame = new TransferFrame()
                         .setDeliveryId(UnsignedInteger.valueOf(nextId))
                         .setDeliveryTag(dtag)
-                        .setMessageFormat(UnsignedInteger.ZERO)
+                        .setMessageFormat(UnsignedInteger.valueOf(messageFormat))
                         .setSettled(sendSettled);
 
                 int remaining = length - sent;
@@ -2256,10 +2308,22 @@ public class TestAmqpPeer implements AutoCloseable
         expectTransfer(expectedPayloadMatcher, null, stateMatcher, settled, sendResponseDisposition, responseState, responseSettled, frameSize, dispositionDelay);
     }
 
-    //TODO: fix responseState to only admit applicable types.
     public void expectTransfer(Matcher<Binary> expectedPayloadMatcher, Matcher<Binary> deliveryTagMatcher,
             Matcher<?> stateMatcher, boolean settled, boolean sendResponseDisposition, ListDescribedType responseState,
             boolean responseSettled, int frameSize, long dispositionDelay)
+    {
+        expectTransfer(expectedPayloadMatcher, deliveryTagMatcher, stateMatcher, settled, sendResponseDisposition, responseState, responseSettled, frameSize, dispositionDelay, null);
+    }
+
+    public void expectTransfer(Matcher<Binary> expectedPayloadMatcher, int messageFormat)
+    {
+        expectTransfer(expectedPayloadMatcher, null, nullValue(), false, true, new Accepted(), true, 0, 0, Matchers.equalTo(UnsignedInteger.valueOf(messageFormat)));
+    }
+
+    //TODO: fix responseState to only admit applicable types.
+    public void expectTransfer(Matcher<Binary> expectedPayloadMatcher, Matcher<Binary> deliveryTagMatcher,
+            Matcher<?> stateMatcher, boolean settled, boolean sendResponseDisposition, ListDescribedType responseState,
+            boolean responseSettled, int frameSize, long dispositionDelay, Matcher<UnsignedInteger> messageFormatMatcher)
     {
         Matcher<Boolean> settledMatcher = null;
         if(settled)
@@ -2275,6 +2339,9 @@ public class TestAmqpPeer implements AutoCloseable
         transferMatcher.setPayloadMatcher(expectedPayloadMatcher);
         transferMatcher.withSettled(settledMatcher);
         transferMatcher.withState(stateMatcher);
+        if (messageFormatMatcher != null) {
+            transferMatcher.withMessageFormat(messageFormatMatcher);
+        }
         if (deliveryTagMatcher != null) {
             transferMatcher.withDeliveryTag(deliveryTagMatcher);
         }

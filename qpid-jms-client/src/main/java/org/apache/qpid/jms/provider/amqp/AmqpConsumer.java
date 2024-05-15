@@ -24,8 +24,6 @@ import java.util.ArrayList;
 import java.util.ListIterator;
 import java.util.concurrent.ScheduledFuture;
 
-import jakarta.jms.Session;
-
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.message.JmsMessage;
@@ -47,6 +45,8 @@ import org.apache.qpid.proton.engine.Delivery;
 import org.apache.qpid.proton.engine.Receiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Session;
 
 /**
  * AMQP Consumer object that is used to manage JMS MessageConsumer semantics.
@@ -559,7 +559,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
     private boolean processDelivery(Delivery incoming) throws Exception {
         JmsMessage message = null;
         try {
-            message = AmqpCodec.decodeMessage(this, getEndpoint().recv()).asJmsMessage();
+            message = AmqpCodec.decodeMessage(this, getEndpoint().recv(), incoming.getMessageFormat()).asJmsMessage();
         } catch (Exception e) {
             LOG.warn("Error on transform: {}", e.getMessage());
             // TODO - We could signal provider error but not sure we want to fail

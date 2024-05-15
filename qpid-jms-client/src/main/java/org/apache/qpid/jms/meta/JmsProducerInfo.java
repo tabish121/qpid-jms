@@ -26,6 +26,8 @@ public final class JmsProducerInfo extends JmsAbstractResource implements Compar
 
     private JmsDestination destination;
     private boolean presettle;
+    private boolean compressionEnabled;
+    private volatile boolean compressionSupported;
 
     public JmsProducerInfo(JmsProducerId producerId) {
         this(producerId, JmsMessageIDBuilder.BUILTIN.DEFAULT.createBuilder());
@@ -89,8 +91,43 @@ public final class JmsProducerInfo extends JmsAbstractResource implements Compar
         this.presettle = presettle;
     }
 
+    /**
+     * @return <code>true</code> if the producer is enabled for sending messages with compressed bodies.
+     */
+    public boolean isCompressionEnabled() {
+        return compressionEnabled;
+    }
+
+    /**
+     * Sets the compression enabled value for this producer. When <code>true</code> the producer
+     * is enabled to send messages with compressed message bodies following the AMQP JMS message
+     * compression format.
+     *
+     * @param enabled
+     * 		set to <code>true</code> if a producer can send messages compressed.
+     */
+    public void setCompressionEnabled(boolean enabled) {
+        this.compressionEnabled = enabled;
+    }
+
     public JmsMessageIDBuilder getMessageIDBuilder() {
         return messageIDBuilder;
+    }
+
+    /**
+     * @return <code>true</code> if the producer link supports sending messages with compressed bodies.
+     */
+    public boolean isCompressionSupported() {
+        return compressionSupported;
+    }
+
+    /**
+     * Sets if the current link supports compression following an attach. If compression was
+     * not enabled then this will always be false, otherwise it will be false if the attach
+     * outcome indicates that compression is unavailable on this remote.
+     */
+    public void setCompressionSupported(boolean supported) {
+        this.compressionSupported = supported;
     }
 
     @Override

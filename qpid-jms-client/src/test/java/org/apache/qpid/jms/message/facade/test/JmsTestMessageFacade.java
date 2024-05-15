@@ -23,10 +23,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
-import jakarta.jms.JMSException;
-
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.message.facade.JmsMessageFacade;
+import org.apache.qpid.jms.provider.amqp.message.AmqpMessageCodec;
+
+import jakarta.jms.JMSException;
 
 /**
  * A test implementation of the JmsMessageFaceade that provides a generic
@@ -74,6 +75,11 @@ public class JmsTestMessageFacade implements JmsMessageFacade {
 
     public JmsMsgType getMsgType() {
         return JmsMsgType.MESSAGE;
+    }
+
+    @Override
+    public byte getJmsMsgType() {
+        return (byte) JmsMsgType.MESSAGE.ordinal();
     }
 
     @Override
@@ -373,6 +379,11 @@ public class JmsTestMessageFacade implements JmsMessageFacade {
 
     @Override
     public Object encodeMessage() {
+        return this;
+    }
+
+    @Override
+    public Object encodeMessage(AmqpMessageCodec codec) {
         return this;
     }
 

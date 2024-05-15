@@ -36,6 +36,11 @@ public class JmsTestMapMessageFacade extends JmsTestMessageFacade implements Jms
     }
 
     @Override
+    public byte getJmsMsgType() {
+        return (byte) JmsMsgType.MAP.ordinal();
+    }
+
+    @Override
     public JmsTestMapMessageFacade copy() {
         JmsTestMapMessageFacade copy = new JmsTestMapMessageFacade();
         copyInto(copy);

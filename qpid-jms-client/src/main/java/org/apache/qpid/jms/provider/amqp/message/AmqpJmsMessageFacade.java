@@ -20,6 +20,7 @@ import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_A
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_DELIVERY_TIME;
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_MESSAGE;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -29,12 +30,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
-import jakarta.jms.JMSException;
-import jakarta.jms.JMSRuntimeException;
-import jakarta.jms.MessageFormatException;
-
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.exceptions.IdConversionException;
+import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
 import org.apache.qpid.jms.message.JmsMessage;
 import org.apache.qpid.jms.message.facade.JmsMessageFacade;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
@@ -52,6 +50,9 @@ import org.apache.qpid.proton.amqp.messaging.Properties;
 import org.apache.qpid.proton.amqp.messaging.Section;
 
 import io.netty.buffer.ByteBuf;
+import jakarta.jms.JMSException;
+import jakarta.jms.JMSRuntimeException;
+import jakarta.jms.MessageFormatException;
 
 public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
@@ -909,8 +910,17 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     }
 
     @Override
-    public ByteBuf encodeMessage() {
-        return AmqpCodec.encodeMessage(this);
+    public ByteBuf encodeMessage() throws JMSException {
+        return encodeMessage(AmqpJmsMessageCodec.INSTANCE);
+    }
+
+    @Override
+    public ByteBuf encodeMessage(AmqpMessageCodec codec) throws JMSException {
+        try {
+            return codec.encodeMessage(this);
+        } catch (IOException e) {
+            throw JmsExceptionSupport.create(e);
+        }
     }
 
     //----- TracableMessage implementation

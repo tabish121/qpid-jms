@@ -16,18 +16,20 @@
  */
 package org.apache.qpid.jms.meta;
 
-import jakarta.jms.Session;
-
 import org.apache.qpid.jms.policy.JmsDefaultDeserializationPolicy;
+import org.apache.qpid.jms.policy.JmsDefaultCompressionPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultMessageIDPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultPrefetchPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultPresettlePolicy;
 import org.apache.qpid.jms.policy.JmsDefaultRedeliveryPolicy;
 import org.apache.qpid.jms.policy.JmsDeserializationPolicy;
+import org.apache.qpid.jms.policy.JmsCompressionPolicy;
 import org.apache.qpid.jms.policy.JmsMessageIDPolicy;
 import org.apache.qpid.jms.policy.JmsPrefetchPolicy;
 import org.apache.qpid.jms.policy.JmsPresettlePolicy;
 import org.apache.qpid.jms.policy.JmsRedeliveryPolicy;
+
+import jakarta.jms.Session;
 
 public final class JmsSessionInfo extends JmsAbstractResource implements Comparable<JmsSessionInfo> {
 
@@ -40,6 +42,7 @@ public final class JmsSessionInfo extends JmsAbstractResource implements Compara
     private JmsPresettlePolicy presettlePolicy;
     private JmsRedeliveryPolicy redeliveryPolicy;
     private JmsDeserializationPolicy deserializationPolicy;
+    private JmsCompressionPolicy compressionPolicy;
 
     public JmsSessionInfo(JmsConnectionInfo connectionInfo, long sessionId) {
         if (connectionInfo == null) {
@@ -70,6 +73,7 @@ public final class JmsSessionInfo extends JmsAbstractResource implements Compara
         copy.prefetchPolicy = getPrefetchPolicy().copy();
         copy.messageIDPolicy = getMessageIDPolicy().copy();
         copy.deserializationPolicy = getDeserializationPolicy().copy();
+        copy.compressionPolicy = getCompressionPolicy().copy();
     }
 
     @Override
@@ -186,5 +190,16 @@ public final class JmsSessionInfo extends JmsAbstractResource implements Compara
 
     public void setDeserializationPolicy(JmsDeserializationPolicy deserializationPolicy) {
         this.deserializationPolicy = deserializationPolicy;
+    }
+
+    public JmsCompressionPolicy getCompressionPolicy() {
+        if (compressionPolicy == null) {
+            compressionPolicy = new JmsDefaultCompressionPolicy();
+        }
+        return compressionPolicy;
+    }
+
+    public void setCompressionPolicy(JmsCompressionPolicy compressionPolicy) {
+        this.compressionPolicy = compressionPolicy;
     }
 }

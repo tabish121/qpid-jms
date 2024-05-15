@@ -31,6 +31,11 @@ public final class JmsTestTextMessageFacade extends JmsTestMessageFacade impleme
     }
 
     @Override
+    public byte getJmsMsgType() {
+        return (byte) JmsMsgType.TEXT.ordinal();
+    }
+
+    @Override
     public JmsTestTextMessageFacade copy() {
         JmsTestTextMessageFacade copy = new JmsTestTextMessageFacade();
         copyInto(copy);

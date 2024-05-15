@@ -33,6 +33,11 @@ import io.netty.buffer.ByteBuf;
 public final class AmqpMessageSupport {
 
     /**
+     * Defines the AMQP specification message format.
+     */
+    public static final int AMQP_SPEC_MESSAGE_FORMAT = 0;
+
+    /**
      * Attribute used to mark the class type of JMS message that a particular message
      * instance represents, used internally by the client.
      */

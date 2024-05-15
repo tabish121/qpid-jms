@@ -32,6 +32,8 @@ public class JmsOutboundMessageDispatch {
     private boolean completionRequired;
     private long dispatchId;
     private Object payload;
+    private boolean compressed;
+    private int messageFormat;
 
     private transient String stringView;
 
@@ -101,6 +103,22 @@ public class JmsOutboundMessageDispatch {
 
     public void setCompletionRequired(boolean completionRequired) {
         this.completionRequired = completionRequired;
+    }
+
+    public boolean isCompressed() {
+        return this.compressed;
+    }
+
+    public void setCompressed(boolean compressed) {
+        this.compressed = compressed;
+    }
+
+    public int getMessageFormat() {
+        return messageFormat;
+    }
+
+    public void setMessageFormat(int messageFormat) {
+        this.messageFormat = messageFormat;
     }
 
     @Override

@@ -17,8 +17,11 @@
 package org.apache.qpid.jms.provider.amqp.builders;
 
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DELAYED_DELIVERY;
+import static org.apache.qpid.jms.provider.amqp.message.AmqpJmsCompressedMessageConstants.AMQP_JMS_COMPRESSION_AWARE;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import org.apache.qpid.jms.JmsDestination;
@@ -61,6 +64,12 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
     @Override
     public void buildResource(final AsyncResult request) {
         if (getResourceInfo().getDestination() == null && !getParent().getConnection().getProperties().isAnonymousRelaySupported()) {
+            if (getResourceInfo().isCompressionEnabled()) {
+                // Disable for fallback producers as we can't know from one to the next which might support compression
+                // and our messages are compressed before send so we need to ensure no compressed message escape
+                getResourceInfo().setCompressionEnabled(false);
+                LOG.debug("Disabled message compressed on an anonymous fallback producer: {}", getResourceInfo());
+            }
             LOG.debug("Creating an AmqpAnonymousFallbackProducer");
             new AmqpAnonymousFallbackProducer(getParent(), getResourceInfo());
             request.onSuccess();
@@ -103,9 +112,19 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
         }
         sender.setReceiverSettleMode(ReceiverSettleMode.FIRST);
 
+        final List<Symbol> desiredCapabilities = new ArrayList<>();
+
         if (!connection.getProperties().isDelayedDeliverySupported()) {
             validateDelayedDeliveryLinkCapability = true;
-            sender.setDesiredCapabilities(new Symbol[] { AmqpSupport.DELAYED_DELIVERY });
+            desiredCapabilities.add(AmqpSupport.DELAYED_DELIVERY);
+        }
+
+        if (getResourceInfo().isCompressionEnabled()) {
+            desiredCapabilities.add(AMQP_JMS_COMPRESSION_AWARE);
+        }
+
+        if (!desiredCapabilities.isEmpty()) {
+            sender.setDesiredCapabilities(desiredCapabilities.toArray(new Symbol[0]));
         }
 
         return sender;
@@ -118,18 +137,22 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
 
     @Override
     protected void afterOpened() {
+        final List<Symbol> remoteOfferedCapabilities;
+
+        if (endpoint.getRemoteOfferedCapabilities() != null) {
+            remoteOfferedCapabilities = Arrays.asList(endpoint.getRemoteOfferedCapabilities());
+        } else {
+            remoteOfferedCapabilities = Collections.emptyList();
+        }
+
         if (validateDelayedDeliveryLinkCapability) {
-            Symbol[] remoteOfferedCapabilities = endpoint.getRemoteOfferedCapabilities();
+            getResource().setDelayedDeliverySupported(remoteOfferedCapabilities.contains(DELAYED_DELIVERY));
+        }
 
-            boolean supported = false;
-            if (remoteOfferedCapabilities != null) {
-                List<Symbol> list = Arrays.asList(remoteOfferedCapabilities);
-                if (list.contains(DELAYED_DELIVERY)) {
-                    supported = true;
-                }
-            }
-
-            getResource().setDelayedDeliverySupported(supported);
+        if (getResourceInfo().isCompressionEnabled()) {
+            // Update the supported value, not the enabled value in order to allow this to be
+            // rechecked on a reconnect to another peer during failover.
+            getResourceInfo().setCompressionSupported(remoteOfferedCapabilities.contains(AMQP_JMS_COMPRESSION_AWARE));
         }
     }
 

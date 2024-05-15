@@ -21,14 +21,13 @@ import static org.apache.qpid.jms.provider.amqp.AmqpSupport.JMS_NO_LOCAL_SYMBOL;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.JMS_SELECTOR_SYMBOL;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.MODIFIED_FAILED;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.SHARED_SUBS;
+import static org.apache.qpid.jms.provider.amqp.message.AmqpJmsCompressedMessageConstants.AMQP_JMS_COMPRESSION_AWARE;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-
-import jakarta.jms.JMSRuntimeException;
 
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
@@ -57,6 +56,8 @@ import org.apache.qpid.proton.amqp.messaging.TerminusExpiryPolicy;
 import org.apache.qpid.proton.amqp.transport.ReceiverSettleMode;
 import org.apache.qpid.proton.amqp.transport.SenderSettleMode;
 import org.apache.qpid.proton.engine.Receiver;
+
+import jakarta.jms.JMSRuntimeException;
 
 /**
  * Resource builder responsible for creating and opening an AmqpConsumer instance.
@@ -129,6 +130,10 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
         if (validateSharedSubsLinkCapability) {
             receiver.setDesiredCapabilities(new Symbol[] { AmqpSupport.SHARED_SUBS });
         }
+
+        // Indicate to the remote that we know know to handle compressed AMQP JMS messages
+        // so that it won't have to inflate them before sending them along to us.
+        receiver.setOfferedCapabilities(new Symbol[] {AMQP_JMS_COMPRESSION_AWARE});
 
         return receiver;
     }

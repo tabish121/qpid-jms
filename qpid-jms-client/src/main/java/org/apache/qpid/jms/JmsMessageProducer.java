@@ -20,15 +20,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import jakarta.jms.CompletionListener;
-import jakarta.jms.DeliveryMode;
-import jakarta.jms.Destination;
-import jakarta.jms.IllegalStateException;
-import jakarta.jms.InvalidDestinationException;
-import jakarta.jms.JMSException;
-import jakarta.jms.Message;
-import jakarta.jms.MessageProducer;
-
 import org.apache.qpid.jms.exceptions.JmsConnectionFailedException;
 import org.apache.qpid.jms.message.JmsMessageIDBuilder;
 import org.apache.qpid.jms.meta.JmsProducerId;
@@ -38,6 +29,15 @@ import org.apache.qpid.jms.provider.Provider;
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.ProviderFuture;
 import org.apache.qpid.jms.provider.ProviderSynchronization;
+
+import jakarta.jms.CompletionListener;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.InvalidDestinationException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
 
 /**
  * Implementation of a JMS MessageProducer
@@ -69,6 +69,7 @@ public class JmsMessageProducer implements AutoCloseable, MessageProducer {
         this.producerInfo = new JmsProducerInfo(producerId, messageIDBuilder);
         this.producerInfo.setDestination(destination);
         this.producerInfo.setPresettle(session.getPresettlePolicy().isProducerPresttled(session, destination));
+        this.producerInfo.setCompressionEnabled(session.getCompressionPolicy().isCompressionTarget(session, destination));
 
         session.getConnection().createResource(producerInfo, new ProviderSynchronization() {
 
@@ -343,6 +344,10 @@ public class JmsMessageProducer implements AutoCloseable, MessageProducer {
 
     void setFailureCause(Throwable failureCause) {
         this.failureCause.set(failureCause);
+    }
+
+    JmsProducerInfo getProducerInfo() {
+        return producerInfo;
     }
 
     Throwable getFailureCause() {
