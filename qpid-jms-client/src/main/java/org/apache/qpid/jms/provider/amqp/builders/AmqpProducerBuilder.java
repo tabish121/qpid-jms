@@ -16,10 +16,15 @@
  */
 package org.apache.qpid.jms.provider.amqp.builders;
 
+import static org.apache.qpid.jms.provider.amqp.AmqpSupport.ACCEPT_ENCODING;
+import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DEFLATE;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DELAYED_DELIVERY;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.meta.JmsProducerInfo;
@@ -61,6 +66,12 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
     @Override
     public void buildResource(final AsyncResult request) {
         if (getResourceInfo().getDestination() == null && !getParent().getConnection().getProperties().isAnonymousRelaySupported()) {
+            if (getResourceInfo().isCompressionEnabled()) {
+                // Disable for fallback producers as we can't know from one to the next which might support compression
+                // and our messages are compressed before send so we need to ensure no compressed message escape
+                getResourceInfo().setCompressionEnabled(false);
+                LOG.debug("Disabled message compressed on an anonymous fallback producer: {}", getResourceInfo());
+            }
             LOG.debug("Creating an AmqpAnonymousFallbackProducer");
             new AmqpAnonymousFallbackProducer(getParent(), getResourceInfo());
             request.onSuccess();
@@ -103,9 +114,15 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
         }
         sender.setReceiverSettleMode(ReceiverSettleMode.FIRST);
 
+        final List<Symbol> desiredCapabilities = new ArrayList<>();
+
         if (!connection.getProperties().isDelayedDeliverySupported()) {
             validateDelayedDeliveryLinkCapability = true;
-            sender.setDesiredCapabilities(new Symbol[] { AmqpSupport.DELAYED_DELIVERY });
+            desiredCapabilities.add(AmqpSupport.DELAYED_DELIVERY);
+        }
+
+        if (!desiredCapabilities.isEmpty()) {
+            sender.setDesiredCapabilities(desiredCapabilities.toArray(new Symbol[0]));
         }
 
         return sender;
@@ -116,20 +133,30 @@ public class AmqpProducerBuilder extends AmqpResourceBuilder<AmqpProducer, AmqpS
         return new AmqpFixedProducer(getParent(), getResourceInfo(), endpoint);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     protected void afterOpened() {
+        final List<Symbol> remoteOfferedCapabilities;
+
+        if (endpoint.getRemoteOfferedCapabilities() != null) {
+            remoteOfferedCapabilities = Arrays.asList(endpoint.getRemoteOfferedCapabilities());
+        } else {
+            remoteOfferedCapabilities = Collections.emptyList();
+        }
+
         if (validateDelayedDeliveryLinkCapability) {
-            Symbol[] remoteOfferedCapabilities = endpoint.getRemoteOfferedCapabilities();
+            getResource().setDelayedDeliverySupported(remoteOfferedCapabilities.contains(DELAYED_DELIVERY));
+        }
 
-            boolean supported = false;
-            if (remoteOfferedCapabilities != null) {
-                List<Symbol> list = Arrays.asList(remoteOfferedCapabilities);
-                if (list.contains(DELAYED_DELIVERY)) {
-                    supported = true;
-                }
+        if (getResourceInfo().isCompressionEnabled()) {
+            final Map<Symbol, Object> properties = endpoint.getRemoteProperties() != null ? endpoint.getRemoteProperties() : Collections.EMPTY_MAP;
+
+            if (DEFLATE.equals(properties.get(ACCEPT_ENCODING))) {
+                // Update the supported value, not the enabled value in order to allow this to be
+                // rechecked on a reconnect to another peer during failover, a producer can have its
+                // compression enabled but never actually act on it it if no remote supports it.
+                getResourceInfo().setCompressionSupported(true);
             }
-
-            getResource().setDelayedDeliverySupported(supported);
         }
     }
 

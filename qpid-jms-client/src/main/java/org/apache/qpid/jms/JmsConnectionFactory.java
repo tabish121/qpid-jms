@@ -25,16 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 
-import jakarta.jms.Connection;
-import jakarta.jms.ConnectionFactory;
-import jakarta.jms.ExceptionListener;
-import jakarta.jms.JMSContext;
-import jakarta.jms.JMSException;
-import jakarta.jms.MessageListener;
-import jakarta.jms.QueueConnection;
-import jakarta.jms.QueueConnectionFactory;
-import jakarta.jms.TopicConnection;
-import jakarta.jms.TopicConnectionFactory;
 import javax.net.ssl.SSLContext;
 
 import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
@@ -42,11 +32,13 @@ import org.apache.qpid.jms.jndi.JNDIStorable;
 import org.apache.qpid.jms.meta.JmsConnectionId;
 import org.apache.qpid.jms.meta.JmsConnectionInfo;
 import org.apache.qpid.jms.policy.JmsDefaultDeserializationPolicy;
+import org.apache.qpid.jms.policy.JmsDefaultCompressionPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultMessageIDPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultPrefetchPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultPresettlePolicy;
 import org.apache.qpid.jms.policy.JmsDefaultRedeliveryPolicy;
 import org.apache.qpid.jms.policy.JmsDeserializationPolicy;
+import org.apache.qpid.jms.policy.JmsCompressionPolicy;
 import org.apache.qpid.jms.policy.JmsMessageIDPolicy;
 import org.apache.qpid.jms.policy.JmsPrefetchPolicy;
 import org.apache.qpid.jms.policy.JmsPresettlePolicy;
@@ -62,6 +54,17 @@ import org.apache.qpid.jms.util.URISupport;
 import org.apache.qpid.jms.util.URISupport.CompositeData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSContext;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageListener;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicConnectionFactory;
 
 /**
  * JMS ConnectionFactory Implementation.
@@ -116,6 +119,7 @@ public class JmsConnectionFactory extends JNDIStorable implements ConnectionFact
     private JmsPresettlePolicy presettlePolicy = new JmsDefaultPresettlePolicy();
     private JmsMessageIDPolicy messageIDPolicy = new JmsDefaultMessageIDPolicy();
     private JmsDeserializationPolicy deserializationPolicy = new JmsDefaultDeserializationPolicy();
+    private JmsCompressionPolicy compressionPolicy = new JmsDefaultCompressionPolicy();
 
     public JmsConnectionFactory() {
     }
@@ -275,6 +279,7 @@ public class JmsConnectionFactory extends JNDIStorable implements ConnectionFact
             connectionInfo.setPresettlePolicy(presettlePolicy.copy());
             connectionInfo.setRedeliveryPolicy(redeliveryPolicy.copy());
             connectionInfo.setDeserializationPolicy(deserializationPolicy.copy());
+            connectionInfo.setCompressionPolicy(compressionPolicy.copy());
             connectionInfo.getExtensionMap().putAll(extensionMap);
 
             if(tracer != null) {
@@ -729,6 +734,26 @@ public class JmsConnectionFactory extends JNDIStorable implements ConnectionFact
             deserializationPolicy = new JmsDefaultDeserializationPolicy();
         }
         this.deserializationPolicy = deserializationPolicy;
+    }
+
+    /**
+     * @return the compressionPolicy that is currently configured.
+     */
+    public JmsCompressionPolicy getCompressionPolicy() {
+        return compressionPolicy;
+    }
+
+    /**
+     * Sets the JmsMessageCompressionPolicy that is applied when a new connection is created.
+     *
+     * @param compressionPolicy
+     *      the compressionPolicy that will be applied to new connections.
+     */
+    public void setCompressionPolicy(JmsCompressionPolicy compressionPolicy) {
+        if (compressionPolicy == null) {
+            compressionPolicy = new JmsDefaultCompressionPolicy();
+        }
+        this.compressionPolicy = compressionPolicy;
     }
 
     /**

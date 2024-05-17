@@ -49,6 +49,7 @@ import org.apache.qpid.jms.meta.JmsSessionInfo;
 import org.apache.qpid.jms.meta.JmsTransactionId;
 import org.apache.qpid.jms.meta.JmsTransactionInfo;
 import org.apache.qpid.jms.policy.JmsDeserializationPolicy;
+import org.apache.qpid.jms.policy.JmsCompressionPolicy;
 import org.apache.qpid.jms.policy.JmsMessageIDPolicy;
 import org.apache.qpid.jms.policy.JmsPrefetchPolicy;
 import org.apache.qpid.jms.policy.JmsPresettlePolicy;
@@ -917,7 +918,7 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
     }
 
     ProviderFuture newProviderFuture() {
-    	return newProviderFuture(null);
+        return newProviderFuture(null);
     }
 
     ProviderFuture newProviderFuture(ProviderSynchronization synchronization) {
@@ -1039,6 +1040,14 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
 
     public void setDeserializationPolicy(JmsDeserializationPolicy deserializationPolicy) {
         connectionInfo.setDeserializationPolicy(deserializationPolicy);
+    }
+
+    public JmsCompressionPolicy getCompressionPolicy() {
+        return connectionInfo.getCompressionPolicy();
+    }
+
+    public void setCompressionPolicy(JmsCompressionPolicy compressionPolicy) {
+        connectionInfo.setCompressionPolicy(compressionPolicy);
     }
 
     public boolean isReceiveLocalOnly() {

@@ -22,22 +22,24 @@ import java.util.EnumMap;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
-import jakarta.jms.Connection;
-
 import org.apache.qpid.jms.JmsConnection;
 import org.apache.qpid.jms.JmsConnectionExtensions;
 import org.apache.qpid.jms.policy.JmsDefaultDeserializationPolicy;
+import org.apache.qpid.jms.policy.JmsDefaultCompressionPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultMessageIDPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultPrefetchPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultPresettlePolicy;
 import org.apache.qpid.jms.policy.JmsDefaultRedeliveryPolicy;
 import org.apache.qpid.jms.policy.JmsDeserializationPolicy;
+import org.apache.qpid.jms.policy.JmsCompressionPolicy;
 import org.apache.qpid.jms.policy.JmsMessageIDPolicy;
 import org.apache.qpid.jms.policy.JmsPrefetchPolicy;
 import org.apache.qpid.jms.policy.JmsPresettlePolicy;
 import org.apache.qpid.jms.policy.JmsRedeliveryPolicy;
 import org.apache.qpid.jms.tracing.JmsNoOpTracer;
 import org.apache.qpid.jms.tracing.JmsTracer;
+
+import jakarta.jms.Connection;
 
 /**
  * Meta object that contains the JmsConnection identification and configuration
@@ -86,6 +88,7 @@ public final class JmsConnectionInfo extends JmsAbstractResource implements Comp
     private JmsPresettlePolicy presettlePolicy;
     private JmsMessageIDPolicy messageIDPolicy;
     private JmsDeserializationPolicy deserializationPolicy;
+    private JmsCompressionPolicy compressionPolicy;
 
     private volatile byte[] encodedUserId;
     private JmsTracer tracer = JmsNoOpTracer.INSTANCE;
@@ -127,6 +130,7 @@ public final class JmsConnectionInfo extends JmsAbstractResource implements Comp
         copy.redeliveryPolicy = getRedeliveryPolicy().copy();
         copy.presettlePolicy = getPresettlePolicy().copy();
         copy.deserializationPolicy = getDeserializationPolicy().copy();
+        copy.compressionPolicy = getCompressionPolicy().copy();
     }
 
     public boolean isForceAsyncSend() {
@@ -364,6 +368,17 @@ public final class JmsConnectionInfo extends JmsAbstractResource implements Comp
             deserializationPolicy = new JmsDefaultDeserializationPolicy();
         }
         return deserializationPolicy;
+    }
+
+    public void setCompressionPolicy(JmsCompressionPolicy compressionPolicy) {
+        this.compressionPolicy = compressionPolicy;
+    }
+
+    public JmsCompressionPolicy getCompressionPolicy() {
+        if (compressionPolicy == null) {
+            compressionPolicy = new JmsDefaultCompressionPolicy();
+        }
+        return compressionPolicy;
     }
 
     public void setDeserializationPolicy(JmsDeserializationPolicy deserializationPolicy) {

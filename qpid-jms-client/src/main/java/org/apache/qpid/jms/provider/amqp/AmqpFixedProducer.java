@@ -95,6 +95,12 @@ public class AmqpFixedProducer extends AmqpProducer {
             if (!delayedDeliverySupported && envelope.getMessage().getFacade().isDeliveryTimeTransmitted()) {
                 // Don't allow sends with delay if the remote has not said it can handle them
                 send.onFailure(new ProviderUnsupportedOperationException("Remote does not support delayed message delivery"));
+            } else if (!getResourceInfo().isCompressionSupported() && envelope.isCompressed()) {
+                // Don't allow sends with compressed message bodies to be sent to a remote
+                // that does not support compression, this can happen on failover if the
+                // new remote doesn't support compression but the original did and a send
+                // was in-flight when the connection dropped.
+                send.onFailure(new ProviderUnsupportedOperationException("Remote does not support message compression but message was compressed"));
             } else if (session.isTransactionInDoubt()) {
                 // If the transaction has failed due to remote termination etc then we just indicate
                 // the send has succeeded until the a new transaction is started.
@@ -154,6 +160,7 @@ public class AmqpFixedProducer extends AmqpProducer {
 
         send.setDelivery(delivery);
         delivery.setContext(send);
+        delivery.setMessageFormat(envelope.getMessageFormat());
 
         // Put it on the wire and let it fail if the connection is broken, if it does
         // get written then continue on to determine when we should complete it.

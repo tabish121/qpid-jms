@@ -16,7 +16,9 @@
  */
 package org.apache.qpid.jms.provider.amqp.builders;
 
+import static org.apache.qpid.jms.provider.amqp.AmqpSupport.ACCEPT_ENCODING;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.COPY;
+import static org.apache.qpid.jms.provider.amqp.AmqpSupport.DEFLATE;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.JMS_NO_LOCAL_SYMBOL;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.JMS_SELECTOR_SYMBOL;
 import static org.apache.qpid.jms.provider.amqp.AmqpSupport.MODIFIED_FAILED;
@@ -27,8 +29,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-
-import jakarta.jms.JMSRuntimeException;
 
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
@@ -57,6 +57,8 @@ import org.apache.qpid.proton.amqp.messaging.TerminusExpiryPolicy;
 import org.apache.qpid.proton.amqp.transport.ReceiverSettleMode;
 import org.apache.qpid.proton.amqp.transport.SenderSettleMode;
 import org.apache.qpid.proton.engine.Receiver;
+
+import jakarta.jms.JMSRuntimeException;
 
 /**
  * Resource builder responsible for creating and opening an AmqpConsumer instance.
@@ -129,6 +131,9 @@ public class AmqpConsumerBuilder extends AmqpResourceBuilder<AmqpConsumer, AmqpS
         if (validateSharedSubsLinkCapability) {
             receiver.setDesiredCapabilities(new Symbol[] { AmqpSupport.SHARED_SUBS });
         }
+
+        // Adds an accept encoding similar to that sent in HTTP Requests
+        receiver.setProperties(Map.of(ACCEPT_ENCODING, DEFLATE));
 
         return receiver;
     }

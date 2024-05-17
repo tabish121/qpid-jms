@@ -24,8 +24,6 @@ import java.util.ArrayList;
 import java.util.ListIterator;
 import java.util.concurrent.ScheduledFuture;
 
-import jakarta.jms.Session;
-
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.message.JmsMessage;
@@ -36,7 +34,8 @@ import org.apache.qpid.jms.provider.ProviderConstants.ACK_TYPE;
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.ProviderListener;
 import org.apache.qpid.jms.provider.WrappedAsyncResult;
-import org.apache.qpid.jms.provider.amqp.message.AmqpCodec;
+import org.apache.qpid.jms.provider.amqp.message.AmqpJmsCompressedMessageCodec;
+import org.apache.qpid.jms.provider.amqp.message.AmqpMessageCodec;
 import org.apache.qpid.jms.provider.exceptions.ProviderExceptionSupport;
 import org.apache.qpid.jms.provider.exceptions.ProviderOperationTimedOutException;
 import org.apache.qpid.proton.amqp.Binary;
@@ -48,6 +47,8 @@ import org.apache.qpid.proton.engine.Receiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import jakarta.jms.Session;
+
 /**
  * AMQP Consumer object that is used to manage JMS MessageConsumer semantics.
  */
@@ -57,6 +58,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
 
     private static final int INDIVIDUAL_ACKNOWLEDGE = 101;
 
+    protected final AmqpMessageCodec messageCodec = AmqpJmsCompressedMessageCodec.INSTANCE; // Default for now
     protected final AmqpSession session;
     protected final int acknowledgementMode;
     protected AsyncResult stopRequest;
@@ -559,7 +561,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
     private boolean processDelivery(Delivery incoming) throws Exception {
         JmsMessage message = null;
         try {
-            message = AmqpCodec.decodeMessage(this, getEndpoint().recv()).asJmsMessage();
+            message = messageCodec.decodeMessage(this, getEndpoint().recv()).asJmsMessage();
         } catch (Exception e) {
             LOG.warn("Error on transform: {}", e.getMessage());
             // TODO - We could signal provider error but not sure we want to fail

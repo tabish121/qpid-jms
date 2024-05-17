@@ -18,10 +18,11 @@ package org.apache.qpid.jms.message.facade;
 
 import java.util.Set;
 
-import jakarta.jms.JMSException;
-
 import org.apache.qpid.jms.JmsDestination;
+import org.apache.qpid.jms.provider.amqp.message.AmqpMessageCodec;
 import org.apache.qpid.jms.tracing.TraceableMessage;
+
+import jakarta.jms.JMSException;
 
 /**
  * The Message Facade interface defines the required mapping between a Provider's
@@ -30,6 +31,11 @@ import org.apache.qpid.jms.tracing.TraceableMessage;
  * copy to / from a more generic JMS message instance.
  */
 public interface JmsMessageFacade extends TraceableMessage {
+
+    /**
+     * @return the appropriate byte value that indicates the type of message this is.
+     */
+    public byte getJmsMsgType();
 
     /**
      * Returns the property names for this Message instance. The Set returned may be
@@ -457,8 +463,22 @@ public interface JmsMessageFacade extends TraceableMessage {
      * Encodes the protocol level Message instance for transmission.
      *
      * @return an Object that represents the encoded form of the message for the target provider.
+     *
+     * @throws JMSException if an error occurs while encoding the message.
      */
-    Object encodeMessage();
+    Object encodeMessage() throws JMSException;
+
+    /**
+     * Encodes the protocol level Message instance for transmission.
+     *
+     * @param codec
+     * 		The {@link AmqpMessageCodec} to use for encoding the message.
+     *
+     * @return an Object that represents the encoded form of the message for the target provider.
+     *
+     * @throws JMSException if an error occurs while encoding the message.
+     */
+    Object encodeMessage(AmqpMessageCodec codec) throws JMSException;
 
     /**
      * Returns whether the delivery time is being transmitted, i.e. incorporates an actual delivery delay.

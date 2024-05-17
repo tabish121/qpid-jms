@@ -46,6 +46,14 @@ public class AmqpSupport {
     public static final Symbol DELAYED_DELIVERY = Symbol.valueOf("DELAYED_DELIVERY");
     public static final Symbol SHARED_SUBS = Symbol.valueOf("SHARED-SUBS");
 
+    // Mimic HTTP Accept-Encoding for Connection and Link properties, the property is meant
+    // to be accompanied by a String value carrying HTTP compliant compression algorithms
+    // separated by a comma if more than one encoding is supported.
+    public static final Symbol ACCEPT_ENCODING = Symbol.valueOf("Accept-Encoding");
+
+    // Known encodings that the client will utilize
+    public static final String DEFLATE = "deflate"; // ZLib structured deflate
+
     // Symbols used to announce connection error information
     public static final Symbol CONNECTION_OPEN_FAILED = Symbol.valueOf("amqp:connection-establishment-failed");
     public static final Symbol INVALID_FIELD = Symbol.valueOf("invalid-field");

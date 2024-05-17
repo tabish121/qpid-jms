@@ -20,15 +20,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-import jakarta.jms.IllegalStateException;
-import jakarta.jms.JMSException;
-
 import org.apache.qpid.jms.message.facade.JmsBytesMessageFacade;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.Unpooled;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
 
 /**
  * A test implementation of the JmsBytesMessageFacade that simply holds a raw Buffer
@@ -49,6 +48,11 @@ public final class JmsTestBytesMessageFacade extends JmsTestMessageFacade implem
     @Override
     public JmsMsgType getMsgType() {
         return JmsMsgType.BYTES;
+    }
+
+    @Override
+    public byte getJmsMsgType() {
+        return (byte) JmsMsgType.BYTES.ordinal();
     }
 
     @Override

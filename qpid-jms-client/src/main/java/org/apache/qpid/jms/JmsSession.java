@@ -52,6 +52,7 @@ import org.apache.qpid.jms.meta.JmsProducerInfo;
 import org.apache.qpid.jms.meta.JmsResource.ResourceState;
 import org.apache.qpid.jms.meta.JmsSessionId;
 import org.apache.qpid.jms.meta.JmsSessionInfo;
+import org.apache.qpid.jms.policy.JmsCompressionPolicy;
 import org.apache.qpid.jms.policy.JmsDeserializationPolicy;
 import org.apache.qpid.jms.policy.JmsMessageIDPolicy;
 import org.apache.qpid.jms.policy.JmsPrefetchPolicy;
@@ -62,6 +63,8 @@ import org.apache.qpid.jms.provider.ProviderConstants.ACK_TYPE;
 import org.apache.qpid.jms.provider.ProviderException;
 import org.apache.qpid.jms.provider.ProviderFuture;
 import org.apache.qpid.jms.provider.ProviderSynchronization;
+import org.apache.qpid.jms.provider.amqp.message.AmqpCodec;
+import org.apache.qpid.jms.provider.amqp.message.AmqpMessageCodec;
 import org.apache.qpid.jms.selector.SelectorParser;
 import org.apache.qpid.jms.selector.filter.FilterException;
 import org.apache.qpid.jms.util.NoOpExecutor;
@@ -155,6 +158,7 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
         sessionInfo.setPrefetchPolicy(connection.getPrefetchPolicy().copy());
         sessionInfo.setPresettlePolicy(connection.getPresettlePolicy().copy());
         sessionInfo.setRedeliveryPolicy(connection.getRedeliveryPolicy().copy());
+        sessionInfo.setCompressionPolicy(connection.getCompressionPolicy().copy());
         sessionInfo.setDeserializationPolicy(connection.getDeserializationPolicy());
 
         connection.createResource(sessionInfo, new ProviderSynchronization() {
@@ -956,19 +960,25 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
                 outbound.getFacade().setUserId(null);
             }
 
-            boolean sync = connection.isForceSyncSend() ||
-                           (!connection.isForceAsyncSend() && deliveryMode == DeliveryMode.PERSISTENT && !getTransacted());
+            final boolean compress = producer.getProducerInfo().isCompressionSupported() ?
+                getCompressionPolicy().isCompressionTarget(producer, destination, outbound) : false;
+
+            final boolean sync = connection.isForceSyncSend() ||
+                                 (!connection.isForceAsyncSend() && deliveryMode == DeliveryMode.PERSISTENT && !getTransacted());
+
+            final AmqpMessageCodec codec = AmqpCodec.selectEncoder(outbound.getFacade(), compress);
 
             outbound.onSend(timeToLive);
 
             JmsOutboundMessageDispatch envelope = new JmsOutboundMessageDispatch();
             envelope.setMessage(outbound);
-            envelope.setPayload(outbound.getFacade().encodeMessage());
+            envelope.setPayload(outbound.getFacade().encodeMessage(codec));
             envelope.setProducerId(producer.getProducerId());
             envelope.setDestination(destination);
             envelope.setSendAsync(listener == null ? !sync : true);
             envelope.setDispatchId(messageSequence);
             envelope.setCompletionRequired(listener != null);
+            envelope.setCompressed(compress);
 
             if (producer.isAnonymous()) {
                 envelope.setPresettle(getPresettlePolicy().isProducerPresttled(this, destination));
@@ -1351,6 +1361,10 @@ public class JmsSession implements AutoCloseable, Session, QueueSession, TopicSe
 
     public JmsDeserializationPolicy getDeserializationPolicy() {
         return sessionInfo.getDeserializationPolicy();
+    }
+
+    public JmsCompressionPolicy getCompressionPolicy() {
+        return sessionInfo.getCompressionPolicy();
     }
 
     /**

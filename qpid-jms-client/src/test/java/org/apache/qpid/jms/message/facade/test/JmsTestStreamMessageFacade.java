@@ -19,9 +19,9 @@ package org.apache.qpid.jms.message.facade.test;
 import java.util.ArrayList;
 import java.util.List;
 
-import jakarta.jms.MessageEOFException;
-
 import org.apache.qpid.jms.message.facade.JmsStreamMessageFacade;
+
+import jakarta.jms.MessageEOFException;
 
 /**
  * Test implementation of the JmsStreamMessageFacade
@@ -34,6 +34,11 @@ public class JmsTestStreamMessageFacade extends JmsTestMessageFacade implements 
     @Override
     public JmsMsgType getMsgType() {
         return JmsMsgType.STREAM;
+    }
+
+    @Override
+    public byte getJmsMsgType() {
+        return (byte) JmsMsgType.STREAM.ordinal();
     }
 
     @Override
