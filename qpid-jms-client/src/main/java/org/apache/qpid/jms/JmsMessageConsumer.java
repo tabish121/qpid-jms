@@ -23,18 +23,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import jakarta.jms.IllegalStateException;
-import jakarta.jms.JMSException;
-import jakarta.jms.Message;
-import jakarta.jms.MessageConsumer;
-import jakarta.jms.MessageFormatException;
-import jakarta.jms.MessageListener;
-import jakarta.jms.Session;
-
 import org.apache.qpid.jms.exceptions.JmsConnectionFailedException;
 import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.message.JmsMessage;
+import org.apache.qpid.jms.message.facade.JmsMessageFacade;
 import org.apache.qpid.jms.meta.JmsConsumerId;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
 import org.apache.qpid.jms.meta.JmsResource.ResourceState;
@@ -54,6 +47,14 @@ import org.apache.qpid.jms.util.MessageQueue;
 import org.apache.qpid.jms.util.PriorityMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageListener;
+import jakarta.jms.Session;
 
 /**
  * implementation of a JMS Message Consumer
@@ -251,7 +252,16 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
         try {
             envelope = dequeue(timeout, connection.isReceiveLocalOnly());
             if (envelope != null) {
-                messageBody = envelope.getMessage().getBody(desired);
+                final JmsMessage message = envelope.getMessage();
+                final int messageType = message.getFacade().getJmsMsgType();
+
+                if (messageType == JmsMessageFacade.JMS_MESSAGE) {
+                    throw new MessageFormatException("receiveBody cannot be called on a bare Message instance.");
+                } else if (messageType == JmsMessageFacade.JMS_STREAM_MESSAGE) {
+                    throw new MessageFormatException("receiveBody cannot be called on a StreamMessage instance.");
+                }
+
+                messageBody = message.getBody(desired);
             }
         } catch (MessageFormatException mfe) {
             // Should behave as if receiveBody never happened in these modes.
