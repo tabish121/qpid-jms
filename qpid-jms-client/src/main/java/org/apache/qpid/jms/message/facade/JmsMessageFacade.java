@@ -31,6 +31,29 @@ import org.apache.qpid.jms.tracing.TraceableMessage;
  */
 public interface JmsMessageFacade extends TraceableMessage {
 
+    public static final byte JMS_MESSAGE = 0;
+    public static final byte JMS_OBJECT_MESSAGE = 1;
+    public static final byte JMS_MAP_MESSAGE = 2;
+    public static final byte JMS_BYTES_MESSAGE = 3;
+    public static final byte JMS_STREAM_MESSAGE = 4;
+    public static final byte JMS_TEXT_MESSAGE = 5;
+
+    /**
+     * Returns a byte value that represents the message type from a know set of vales.
+     *
+     * <ul>
+     *   <li>jakarta.jms.Message = 0</li>
+     *   <li>jakarta.jms.ObjectMessage = 1</li>
+     *   <li>jakarta.jms.MapMessage = 2</li>
+     *   <li>jakarta.jms.BytesMessage = 3</li>
+     *   <li>jakarta.jms.StreamMessage = 4</li>
+     *   <li>jakarta.jms.TextMessage = 5</li>
+     * </ul>
+     *
+     * @return a byte value that represents the message type.
+     */
+    public byte getJmsMsgType();
+
     /**
      * Returns the property names for this Message instance. The Set returned may be
      * manipulated by the receiver without impacting the facade, and an empty set

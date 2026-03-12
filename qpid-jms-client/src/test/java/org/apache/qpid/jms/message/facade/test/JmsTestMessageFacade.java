@@ -28,6 +28,7 @@ import javax.jms.JMSException;
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.message.facade.JmsMessageFacade;
 
+
 /**
  * A test implementation of the JmsMessageFaceade that provides a generic
  * message instance which can be used instead of implemented in Provider specific
@@ -74,6 +75,11 @@ public class JmsTestMessageFacade implements JmsMessageFacade {
 
     public JmsMsgType getMsgType() {
         return JmsMsgType.MESSAGE;
+    }
+
+    @Override
+    public byte getJmsMsgType() {
+        return (byte) getMsgType().ordinal();
     }
 
     @Override

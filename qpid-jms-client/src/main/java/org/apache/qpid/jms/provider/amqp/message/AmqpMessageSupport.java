@@ -19,6 +19,7 @@ package org.apache.qpid.jms.provider.amqp.message;
 import java.nio.ByteBuffer;
 import java.util.Map;
 
+import org.apache.qpid.jms.message.facade.JmsMessageFacade;
 import org.apache.qpid.proton.amqp.Symbol;
 import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 import org.apache.qpid.proton.codec.ReadableBuffer;
@@ -47,37 +48,37 @@ public final class AmqpMessageSupport {
      * Value mapping for JMS_MSG_TYPE which indicates the message is a generic JMS Message
      * which has no body.
      */
-    public static final byte JMS_MESSAGE = 0;
+    public static final byte JMS_MESSAGE = JmsMessageFacade.JMS_MESSAGE;
 
     /**
      * Value mapping for JMS_MSG_TYPE which indicates the message is a JMS ObjectMessage
      * which has an Object value serialized in its message body.
      */
-    public static final byte JMS_OBJECT_MESSAGE = 1;
+    public static final byte JMS_OBJECT_MESSAGE = JmsMessageFacade.JMS_OBJECT_MESSAGE;
 
     /**
      * Value mapping for JMS_MSG_TYPE which indicates the message is a JMS MapMessage
      * which has an Map instance serialized in its message body.
      */
-    public static final byte JMS_MAP_MESSAGE = 2;
+    public static final byte JMS_MAP_MESSAGE = JmsMessageFacade.JMS_MAP_MESSAGE;
 
     /**
      * Value mapping for JMS_MSG_TYPE which indicates the message is a JMS BytesMessage
      * which has a body that consists of raw bytes.
      */
-    public static final byte JMS_BYTES_MESSAGE = 3;
+    public static final byte JMS_BYTES_MESSAGE = JmsMessageFacade.JMS_BYTES_MESSAGE;
 
     /**
      * Value mapping for JMS_MSG_TYPE which indicates the message is a JMS StreamMessage
      * which has a body that is a structured collection of primitives values.
      */
-    public static final byte JMS_STREAM_MESSAGE = 4;
+    public static final byte JMS_STREAM_MESSAGE = JmsMessageFacade.JMS_STREAM_MESSAGE;
 
     /**
      * Value mapping for JMS_MSG_TYPE which indicates the message is a JMS TextMessage
      * which has a body that contains a UTF-8 encoded String.
      */
-    public static final byte JMS_TEXT_MESSAGE = 5;
+    public static final byte JMS_TEXT_MESSAGE = JmsMessageFacade.JMS_TEXT_MESSAGE;
 
     public static final String JMS_AMQP_TTL = "JMS_AMQP_TTL";
     public static final String JMS_AMQP_REPLY_TO_GROUP_ID = "JMS_AMQP_REPLY_TO_GROUP_ID";

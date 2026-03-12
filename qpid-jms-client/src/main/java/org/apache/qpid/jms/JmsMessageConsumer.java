@@ -35,6 +35,7 @@ import org.apache.qpid.jms.exceptions.JmsConnectionFailedException;
 import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.message.JmsMessage;
+import org.apache.qpid.jms.message.facade.JmsMessageFacade;
 import org.apache.qpid.jms.meta.JmsConsumerId;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
 import org.apache.qpid.jms.meta.JmsResource.ResourceState;
@@ -251,7 +252,16 @@ public class JmsMessageConsumer implements AutoCloseable, MessageConsumer, JmsMe
         try {
             envelope = dequeue(timeout, connection.isReceiveLocalOnly());
             if (envelope != null) {
-                messageBody = envelope.getMessage().getBody(desired);
+                final JmsMessage message = envelope.getMessage();
+                final int messageType = message.getFacade().getJmsMsgType();
+
+                if (messageType == JmsMessageFacade.JMS_MESSAGE) {
+                    throw new MessageFormatException("receiveBody cannot be called on a bare Message instance.");
+                } else if (messageType == JmsMessageFacade.JMS_STREAM_MESSAGE) {
+                    throw new MessageFormatException("receiveBody cannot be called on a StreamMessage instance.");
+                }
+
+                messageBody = message.getBody(desired);
             }
         } catch (MessageFormatException mfe) {
             // Should behave as if receiveBody never happened in these modes.

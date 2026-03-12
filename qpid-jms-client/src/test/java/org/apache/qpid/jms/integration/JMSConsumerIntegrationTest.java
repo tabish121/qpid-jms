@@ -27,8 +27,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectOutputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.jms.IllegalStateRuntimeException;
@@ -39,6 +41,7 @@ import javax.jms.Message;
 import javax.jms.MessageFormatRuntimeException;
 import javax.jms.MessageListener;
 import javax.jms.Queue;
+import javax.jms.StreamMessage;
 
 import org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport;
 import org.apache.qpid.jms.test.QpidJmsTestCase;
@@ -627,6 +630,131 @@ public class JMSConsumerIntegrationTest extends QpidJmsTestCase {
             assertTrue(Arrays.equals(expectedContent, received1));
             assertTrue(Arrays.equals(expectedContent, received2));
 
+            testPeer.expectEnd();
+            testPeer.expectClose();
+
+            context.close();
+
+            testPeer.waitForAllHandlersToComplete(3000);
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    public void testReceiveBodyOnMessageFailsWhenAnyTypeRequested() throws Exception {
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+            JMSContext context = testFixture.createJMSContext(testPeer);
+
+            testPeer.expectBegin();
+
+            Queue queue = context.createQueue("myQueue");
+
+            PropertiesDescribedType properties = new PropertiesDescribedType();
+
+            MessageAnnotationsDescribedType msgAnnotations = null;
+            msgAnnotations = new MessageAnnotationsDescribedType();
+            msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_MESSAGE);
+
+            testPeer.expectReceiverAttach();
+            testPeer.expectLinkFlowRespondWithTransfer(null, msgAnnotations, properties, null, null, 1);
+            testPeer.expectDispositionThatIsAcceptedAndSettled();
+
+            JMSConsumer messageConsumer = context.createConsumer(queue);
+            try {
+                messageConsumer.receiveBody(String.class, 3000);
+                fail("Should not read as String type");
+            } catch (MessageFormatRuntimeException mfre) {
+            }
+
+            try {
+                messageConsumer.receiveBody(byte[].class, 3000);
+                fail("Should not read as String type");
+            } catch (MessageFormatRuntimeException mfre) {
+            }
+
+            try {
+                messageConsumer.receiveBody(Object.class, 3000);
+                fail("Should not read as String type");
+            } catch (MessageFormatRuntimeException mfre) {
+            }
+
+            try {
+                messageConsumer.receiveBody(Map.class, 3000);
+                fail("Should not read as Map type");
+            } catch (MessageFormatRuntimeException mfre) {
+            }
+
+            final Message received = messageConsumer.receive(1000);
+
+            assertNotNull(received);
+
+            testPeer.waitForAllHandlersToComplete(3000);
+            testPeer.expectEnd();
+            testPeer.expectClose();
+
+            context.close();
+
+            testPeer.waitForAllHandlersToComplete(3000);
+        }
+    }
+
+    @Test
+    @Timeout(20)
+    public void testReceiveBodyOnStreamMessageFailsWhenAnyTypeRequested() throws Exception {
+        try (TestAmqpPeer testPeer = new TestAmqpPeer();) {
+            JMSContext context = testFixture.createJMSContext(testPeer);
+
+            testPeer.expectBegin();
+
+            Queue queue = context.createQueue("myQueue");
+
+            List<Object> list = new ArrayList<Object>();
+            list.add(true);
+            list.add(false);
+            list.add("test");
+
+            PropertiesDescribedType properties = new PropertiesDescribedType();
+
+            MessageAnnotationsDescribedType msgAnnotations = null;
+            msgAnnotations = new MessageAnnotationsDescribedType();
+            msgAnnotations.setSymbolKeyedAnnotation(AmqpMessageSupport.JMS_MSG_TYPE.toString(), AmqpMessageSupport.JMS_STREAM_MESSAGE);
+
+            DescribedType amqpValueSectionContent = new AmqpValueDescribedType(list);
+
+            testPeer.expectReceiverAttach();
+            testPeer.expectLinkFlowRespondWithTransfer(null, msgAnnotations, properties, null, amqpValueSectionContent, 1);
+            testPeer.expectDispositionThatIsAcceptedAndSettled();
+
+            JMSConsumer messageConsumer = context.createConsumer(queue);
+            try {
+                messageConsumer.receiveBody(String.class, 3000);
+                fail("Should not read as String type");
+            } catch (MessageFormatRuntimeException mfre) {
+            }
+
+            try {
+                messageConsumer.receiveBody(byte[].class, 3000);
+                fail("Should not read as String type");
+            } catch (MessageFormatRuntimeException mfre) {
+            }
+
+            try {
+                messageConsumer.receiveBody(Object.class, 3000);
+                fail("Should not read as String type");
+            } catch (MessageFormatRuntimeException mfre) {
+            }
+
+            try {
+                messageConsumer.receiveBody(Map.class, 3000);
+                fail("Should not read as Map type");
+            } catch (MessageFormatRuntimeException mfre) {
+            }
+
+            final StreamMessage received = (StreamMessage) messageConsumer.receive(1000);
+
+            assertNotNull(received);
+
+            testPeer.waitForAllHandlersToComplete(3000);
             testPeer.expectEnd();
             testPeer.expectClose();
 
