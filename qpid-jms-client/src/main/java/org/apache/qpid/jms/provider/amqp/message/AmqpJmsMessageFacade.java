@@ -18,7 +18,6 @@ package org.apache.qpid.jms.provider.amqp.message;
 
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_AMQP_TTL;
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_DELIVERY_TIME;
-import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_MESSAGE;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -28,10 +27,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
-
-import jakarta.jms.JMSException;
-import jakarta.jms.JMSRuntimeException;
-import jakarta.jms.MessageFormatException;
 
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.exceptions.IdConversionException;
@@ -52,6 +47,9 @@ import org.apache.qpid.proton.amqp.messaging.Properties;
 import org.apache.qpid.proton.amqp.messaging.Section;
 
 import io.netty.buffer.ByteBuf;
+import jakarta.jms.JMSException;
+import jakarta.jms.JMSRuntimeException;
+import jakarta.jms.MessageFormatException;
 
 public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
@@ -128,7 +126,8 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
     /**
      * @return the appropriate byte value that indicates the type of message this is.
      */
-    public byte getJmsMsgType() {
+    @Override
+	public byte getJmsMsgType() {
         return JMS_MESSAGE;
     }
 

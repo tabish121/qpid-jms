@@ -16,8 +16,6 @@
  */
 package org.apache.qpid.jms.provider.amqp.message;
 
-import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_MAP_MESSAGE;
-
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;

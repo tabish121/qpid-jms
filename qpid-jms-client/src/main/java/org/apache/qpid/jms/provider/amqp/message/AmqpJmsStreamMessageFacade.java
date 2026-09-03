@@ -16,13 +16,9 @@
  */
 package org.apache.qpid.jms.provider.amqp.message;
 
-import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_STREAM_MESSAGE;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
-import jakarta.jms.MessageEOFException;
 
 import org.apache.qpid.jms.message.JmsStreamMessage;
 import org.apache.qpid.jms.message.facade.JmsStreamMessageFacade;
@@ -30,6 +26,8 @@ import org.apache.qpid.proton.amqp.Binary;
 import org.apache.qpid.proton.amqp.messaging.AmqpSequence;
 import org.apache.qpid.proton.amqp.messaging.AmqpValue;
 import org.apache.qpid.proton.amqp.messaging.Section;
+
+import jakarta.jms.MessageEOFException;
 
 /**
  * Wrapper around an AMQP Message instance that will be treated as a JMS StreamMessage
