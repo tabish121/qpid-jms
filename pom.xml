@@ -58,7 +58,7 @@
     <maven-eclipse-plugin-version>2.10</maven-eclipse-plugin-version>
     <maven-idea-plugin-version>2.5</maven-idea-plugin-version>
     <maven-bundle-plugin-version>6.1.2</maven-bundle-plugin-version>
-    <findbugs-maven-plugin-version>3.0.2</findbugs-maven-plugin-version>
+    <findbugs-maven-plugin-version>3.0.5</findbugs-maven-plugin-version>
     <jacoco-plugin-version>0.8.15</jacoco-plugin-version>
 
     <javaVersion>17</javaVersion>
