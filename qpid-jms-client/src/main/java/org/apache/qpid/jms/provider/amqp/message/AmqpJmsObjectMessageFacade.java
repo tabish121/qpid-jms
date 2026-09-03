@@ -16,12 +16,8 @@
  */
 package org.apache.qpid.jms.provider.amqp.message;
 
-import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_OBJECT_MESSAGE;
-
 import java.io.IOException;
 import java.io.Serializable;
-
-import jakarta.jms.JMSException;
 
 import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
 import org.apache.qpid.jms.message.JmsObjectMessage;
@@ -29,6 +25,8 @@ import org.apache.qpid.jms.message.facade.JmsObjectMessageFacade;
 import org.apache.qpid.jms.policy.JmsDeserializationPolicy;
 import org.apache.qpid.jms.provider.amqp.AmqpConnection;
 import org.apache.qpid.jms.provider.amqp.AmqpConsumer;
+
+import jakarta.jms.JMSException;
 
 /**
  * Wrapper around an AMQP Message instance that will be treated as a JMS ObjectMessage

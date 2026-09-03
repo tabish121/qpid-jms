@@ -16,15 +16,11 @@
  */
 package org.apache.qpid.jms.provider.amqp.message;
 
-import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.JMS_BYTES_MESSAGE;
 import static org.apache.qpid.jms.provider.amqp.message.AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
-import jakarta.jms.IllegalStateException;
-import jakarta.jms.JMSException;
 
 import org.apache.qpid.jms.message.JmsBytesMessage;
 import org.apache.qpid.jms.message.facade.JmsBytesMessageFacade;
@@ -37,6 +33,8 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.Unpooled;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
 
 /**
  * A JmsBytesMessageFacade that wraps around Proton AMQP Message instances to provide
