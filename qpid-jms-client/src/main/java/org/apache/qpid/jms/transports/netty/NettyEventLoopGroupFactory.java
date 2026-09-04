@@ -24,12 +24,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import io.netty.channel.EventLoopGroup;
-import io.netty.util.concurrent.Future;
-
 import org.apache.qpid.jms.util.QpidJMSThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty.channel.EventLoopGroup;
+import io.netty.util.concurrent.Future;
 
 public final class NettyEventLoopGroupFactory {
 
@@ -139,6 +139,7 @@ public final class NettyEventLoopGroupFactory {
     }
 
     private static class EventLoopGroupKey {
+
         private final EventLoopType type;
         private final int eventLoopThreads;
 
@@ -171,6 +172,7 @@ public final class NettyEventLoopGroupFactory {
     }
 
     private static final class EventLoopGroupHolder {
+
         private final EventLoopGroup group;
         private final EventLoopGroupKey key;
         private int refCnt = 1;

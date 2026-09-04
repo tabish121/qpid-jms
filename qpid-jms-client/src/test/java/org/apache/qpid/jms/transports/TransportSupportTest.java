@@ -787,7 +787,6 @@ public class TransportSupportTest extends QpidJmsTestCase {
     public void testCreateSslEngineWithVerifyHostOpenSSL() throws Exception {
         assumeTrue(OpenSsl.isAvailable());
         assumeTrue(OpenSsl.supportsKeyManagerFactory());
-        assumeTrue(OpenSsl.supportsHostnameValidation());
 
         TransportOptions options = createJksSslOptions();
         options.setVerifyHost(true);
@@ -819,7 +818,6 @@ public class TransportSupportTest extends QpidJmsTestCase {
     public void testCreateSslEngineWithoutVerifyHostOpenSSL() throws Exception {
         assumeTrue(OpenSsl.isAvailable());
         assumeTrue(OpenSsl.supportsKeyManagerFactory());
-        assumeTrue(OpenSsl.supportsHostnameValidation());
 
         TransportOptions options = createJksSslOptions();
         options.setVerifyHost(false);
@@ -878,7 +876,6 @@ public class TransportSupportTest extends QpidJmsTestCase {
     public void testIsOpenSSLPossibleWhenHostNameVerificationConfigured() throws Exception {
         assumeTrue(OpenSsl.isAvailable());
         assumeTrue(OpenSsl.supportsKeyManagerFactory());
-        assumeTrue(OpenSsl.supportsHostnameValidation());
 
         TransportOptions options = new TransportOptions();
         options.setUseOpenSSL(true);
@@ -895,7 +892,6 @@ public class TransportSupportTest extends QpidJmsTestCase {
     public void testIsOpenSSLPossibleWhenKeyAliasIsSpecified() throws Exception {
         assumeTrue(OpenSsl.isAvailable());
         assumeTrue(OpenSsl.supportsKeyManagerFactory());
-        assumeTrue(OpenSsl.supportsHostnameValidation());
 
         TransportOptions options = new TransportOptions();
         options.setUseOpenSSL(true);
