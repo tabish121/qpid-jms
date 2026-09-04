@@ -18,10 +18,14 @@ package org.apache.qpid.jms.transports.netty;
 
 import io.netty.channel.EventLoopGroup;
 
+/**
+ * Proxy to the actual event loop group in use which could be a shared resource.
+ */
 public interface EventLoopGroupRef extends AutoCloseable {
 
     EventLoopGroup group();
 
     @Override
     void close();
+
 }

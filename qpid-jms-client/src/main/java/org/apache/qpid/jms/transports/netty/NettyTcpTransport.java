@@ -16,6 +16,9 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
+import static org.apache.qpid.jms.transports.netty.NettyEventLoopGroupFactory.sharedGroup;
+import static org.apache.qpid.jms.transports.netty.NettyEventLoopGroupFactory.unsharedGroup;
+
 import java.io.IOException;
 import java.net.URI;
 import java.security.Principal;
@@ -56,9 +59,6 @@ import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 
-import static org.apache.qpid.jms.transports.netty.NettyEventLoopGroupFactory.sharedGroup;
-import static org.apache.qpid.jms.transports.netty.NettyEventLoopGroupFactory.unsharedGroup;
-
 /**
  * TCP based transport that uses Netty as the underlying IO layer.
  */
@@ -68,6 +68,7 @@ public class NettyTcpTransport implements Transport {
 
     public static final int DEFAULT_MAX_FRAME_SIZE = 65535;
 
+    protected IOSubsystem ioSubsystem = IOSubsystem.NIO;
     protected EventLoopGroupRef groupRef;
     protected Channel channel;
     protected TransportListener listener;
@@ -134,19 +135,26 @@ public class NettyTcpTransport implements Transport {
         }
 
         TransportOptions transportOptions = getTransportOptions();
-
         EventLoopType eventLoopType = EventLoopType.valueOf(transportOptions);
         int sharedEventLoopThreads = transportOptions.getSharedEventLoopThreads();
+
         if (sharedEventLoopThreads > 0) {
             groupRef = sharedGroup(eventLoopType, sharedEventLoopThreads);
         } else {
             groupRef = unsharedGroup(eventLoopType, ioThreadfactory);
         }
 
+        switch (eventLoopType) {
+            case EPOLL -> ioSubsystem = IOSubsystem.EPOLL;
+            case KQUEUE -> ioSubsystem = IOSubsystem.KQUEUE;
+            case NIO -> ioSubsystem = IOSubsystem.NIO;
+            default -> ioSubsystem = IOSubsystem.OTHER;
+        }
+
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(groupRef.group());
 
-        eventLoopType.createChannel(bootstrap);
+        eventLoopType.configureBootstrap(bootstrap);
 
         bootstrap.handler(new ChannelInitializer<Channel>() {
             @Override
@@ -204,6 +212,11 @@ public class NettyTcpTransport implements Transport {
         }
         // returning the channel's specific event loop: the overall event loop group may be multi-threaded
         return channel.eventLoop();
+    }
+
+    @Override
+    public IOSubsystem getIOSubsystem() {
+        return ioSubsystem;
     }
 
     @Override
@@ -444,7 +457,7 @@ public class NettyTcpTransport implements Transport {
 
         if (options.getReceiveBufferSize() != -1) {
             bootstrap.option(ChannelOption.SO_RCVBUF, options.getReceiveBufferSize());
-            bootstrap.option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(options.getReceiveBufferSize()));
+            bootstrap.option(ChannelOption.RECVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(options.getReceiveBufferSize()));
         }
 
         if (options.getTrafficClass() != -1) {

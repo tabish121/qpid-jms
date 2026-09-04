@@ -16,36 +16,53 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.ThreadFactory;
 
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.kqueue.KQueue;
-import io.netty.channel.kqueue.KQueueEventLoopGroup;
+import io.netty.channel.kqueue.KQueueIoHandler;
 import io.netty.channel.kqueue.KQueueSocketChannel;
 
 public class KQueueSupport {
 
-    private static final Logger LOG = LoggerFactory.getLogger(KQueueSupport.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     public static boolean isAvailable(TransportOptions transportOptions) {
+        return transportOptions.isUseKQueue() && isAvailable();
+    }
+
+    public static boolean isAvailable() {
         try {
-            return transportOptions.isUseKQueue() && KQueue.isAvailable();
+            return KQueue.isAvailable();
         } catch (NoClassDefFoundError ncdfe) {
             LOG.debug("Unable to check for KQueue support due to missing class definition", ncdfe);
             return false;
         }
     }
 
-    public static EventLoopGroup createGroup(int nThreads, ThreadFactory ioThreadfactory) {
-        return new KQueueEventLoopGroup(nThreads, ioThreadfactory);
+    public static EventLoopGroup createGroup(int nThreads, ThreadFactory ioThreadFactory) {
+        ensureAvailability();
+
+        return new MultiThreadIoEventLoopGroup(nThreads, ioThreadFactory, KQueueIoHandler.newFactory());
     }
 
-    public static void createChannel(Bootstrap bootstrap) {
-        bootstrap.channel(KQueueSocketChannel.class);
+    public static Class<? extends Channel> getChannelClass() {
+        ensureAvailability();
+
+        return KQueueSocketChannel.class;
+    }
+
+    public static void ensureAvailability() {
+        if (!isAvailable()) {
+            throw new UnsupportedOperationException(
+                "Netty KQueue support is not enabled because the Netty library indicates it is not present or disabled");
+        }
     }
 }

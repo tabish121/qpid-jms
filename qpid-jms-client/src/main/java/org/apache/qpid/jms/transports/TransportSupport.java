@@ -74,9 +74,6 @@ public class TransportSupport {
                 LOG.debug("OpenSSL could not be enabled due to user SSLContext being supplied.");
             } else if (!OpenSsl.supportsKeyManagerFactory()) {
                 LOG.debug("OpenSSL could not be enabled because the version provided does not allow a KeyManagerFactory to be used.");
-            } else if (options.isVerifyHost() && !OpenSsl.supportsHostnameValidation()) {
-                // Keep deprecated check for now, older netty-tcnative versions required it and we don't control the version used.
-                LOG.debug("OpenSSL could not be enabled due to verifyHost being enabled but not supported by the provided OpenSSL version.");
             } else if (options.getKeyAlias() != null) {
                 LOG.debug("OpenSSL could not be enabled because a keyAlias is set and that feature is not supported for OpenSSL.");
             } else {
