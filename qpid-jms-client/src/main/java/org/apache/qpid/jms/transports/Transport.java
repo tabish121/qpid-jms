@@ -32,6 +32,14 @@ import io.netty.buffer.ByteBuf;
 public interface Transport {
 
     /**
+     * An enumeration that the transport implementation should use to provide insights
+     * into what the IO implementation is that backs the transport.
+     */
+    public enum IOSubsystem {
+        NIO, EPOLL, KQUEUE, IO_URING, OTHER;
+    }
+
+    /**
      * Performs the connect operation for the implemented Transport type
      * such as a TCP socket connection, SSL/TLS handshake etc.
      *
@@ -48,6 +56,13 @@ public interface Transport {
      * @throws IOException if an error occurs while attempting the connect.
      */
     ScheduledExecutorService connect(Runnable initRoutine, SSLContext sslContextOverride) throws IOException;
+
+    /**
+     * @return the IO layer that is used to implement the transport instance.
+     */
+    default IOSubsystem getIOSubsystem() {
+        return IOSubsystem.NIO;
+    }
 
     /**
      * @return true if transport is connected or false if the connection is down.

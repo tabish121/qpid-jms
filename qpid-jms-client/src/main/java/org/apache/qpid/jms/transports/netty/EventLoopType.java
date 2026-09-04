@@ -16,25 +16,27 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
-import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.nio.NioSocketChannel;
+import static java.util.Objects.requireNonNull;
+
+import java.util.concurrent.ThreadFactory;
+
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.ThreadFactory;
-
-import static java.util.Objects.requireNonNull;
+import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
+import io.netty.channel.socket.nio.NioSocketChannel;
 
 public enum EventLoopType {
     EPOLL, KQUEUE, NIO;
 
     private static final Logger LOG = LoggerFactory.getLogger(EventLoopType.class);
 
-    public void createChannel(final Bootstrap bootstrap) {
-        createChannel(this, requireNonNull(bootstrap));
+    public void configureBootstrap(final Bootstrap bootstrap) {
+        configureChannel(this, requireNonNull(bootstrap));
     }
 
     public EventLoopGroup createEventLoopGroup(final int threads, final ThreadFactory ioThreadFactory) {
@@ -51,19 +53,19 @@ public enum EventLoopType {
                 return KQueueSupport.createGroup(threads, ioThreadFactory);
             case NIO:
                 LOG.trace("Netty Transport using Nio mode");
-                return new NioEventLoopGroup(threads, ioThreadFactory);
+                return new MultiThreadIoEventLoopGroup(1, ioThreadFactory, NioIoHandler.newFactory());
             default:
                 throw new IllegalArgumentException("Unknown event loop type:" + type);
         }
     }
 
-    private static void createChannel(final EventLoopType type, final Bootstrap bootstrap) {
+    private static void configureChannel(final EventLoopType type, final Bootstrap bootstrap) {
         switch (type) {
             case EPOLL:
-                EpollSupport.createChannel(bootstrap);
+                bootstrap.channel(EpollSupport.getChannelClass());
                 break;
             case KQUEUE:
-                KQueueSupport.createChannel(bootstrap);
+                bootstrap.channel(KQueueSupport.getChannelClass());
                 break;
             case NIO:
                 bootstrap.channel(NioSocketChannel.class);
@@ -76,6 +78,7 @@ public enum EventLoopType {
     public static EventLoopType valueOf(final TransportOptions transportOptions) {
         final boolean useKQueue = KQueueSupport.isAvailable(transportOptions);
         final boolean useEpoll = EpollSupport.isAvailable(transportOptions);
+
         if (useKQueue) {
             return KQUEUE;
         }

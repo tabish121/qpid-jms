@@ -16,8 +16,6 @@
  */
 package org.apache.qpid.jms.transports.netty;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -46,6 +44,7 @@ import org.apache.qpid.jms.test.Wait;
 import org.apache.qpid.jms.test.proxy.TestProxy;
 import org.apache.qpid.jms.test.proxy.TestProxy.ProxyType;
 import org.apache.qpid.jms.transports.Transport;
+import org.apache.qpid.jms.transports.Transport.IOSubsystem;
 import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.apache.qpid.jms.util.QpidJMSThreadFactory;
@@ -59,10 +58,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.Epoll;
-import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.kqueue.KQueue;
-import io.netty.channel.kqueue.KQueueEventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.proxy.ProxyHandler;
 import io.netty.handler.proxy.Socks5ProxyHandler;
 import io.netty.util.ResourceLeakDetector;
@@ -428,6 +424,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
     @Timeout(60)
     public void testSharedEventLoopGroups() throws Exception {
         final Set<Transport> transports = new HashSet<>();
+
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
             server.start();
 
@@ -467,6 +464,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
     @Timeout(60)
     public void testSharedEventLoopGroupsOfDifferentSizes() throws Exception {
         final Set<Transport> transports = new HashSet<>();
+
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
             server.start();
 
@@ -512,6 +510,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
     @Timeout(60)
     public void testUnsharedEventLoopGroups() throws Exception {
         final Set<Transport> transports = new HashSet<>();
+
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
             server.start();
 
@@ -597,7 +596,6 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
     }
 
     public void doMultipleDataPacketsSentAndReceive(final int byteCount, final int iterations) throws Exception {
-
         try (NettyEchoServer server = createEchoServer(createServerOptions())) {
             server.start();
 
@@ -828,11 +826,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             assertTrue(transport.isConnected());
             assertEquals(serverLocation, transport.getRemoteLocation());
 
-            if(useEpoll) {
-                assertEventLoopGroupType("Transport should be using Epoll", transport, EpollEventLoopGroup.class);
-            } else {
-                assertEventLoopGroupType("Transport should be using Nio", transport, NioEventLoopGroup.class);
-            }
+            assertEpoll(useEpoll, transport);
 
             transport.close();
 
@@ -863,13 +857,8 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
         assertNotNull(groupRefField, "Transport implementation unknown");
 
         groupRefField.setAccessible(true);
+
         return (EventLoopGroupRef) groupRefField.get(transport);
-    }
-
-    private static void assertEventLoopGroupType(String message, Transport transport, Class<? extends EventLoopGroup> eventLoopGroupClass) throws Exception {
-        final EventLoopGroupRef groupRef = getGroupRef(transport);
-
-        assertThat(message, groupRef.group(), instanceOf(eventLoopGroupClass));
     }
 
     @Test
@@ -900,11 +889,8 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
 
             assertTrue(transport.isConnected());
             assertEquals(serverLocation, transport.getRemoteLocation());
-            if(useKQueue) {
-                assertEventLoopGroupType("Transport should be using Kqueue", transport, KQueueEventLoopGroup.class);
-            } else {
-                assertEventLoopGroupType("Transport should be using Nio", transport, NioEventLoopGroup.class);
-            }
+
+            assertKQueue(useKQueue, transport);
 
             transport.close();
 
@@ -998,6 +984,26 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
         public void onTransportError(Throwable cause) {
             LOG.info("Transport error caught: {}", cause.getMessage(), cause);
             exceptions.add(cause);
+        }
+    }
+
+    private void assertEpoll(boolean expected, Transport transport) throws Exception {
+        final IOSubsystem ioHandler = transport.getIOSubsystem();
+
+        if (expected) {
+            assertTrue(IOSubsystem.EPOLL.equals(ioHandler), "Expected to be using Epoll but got " + ioHandler.toString());
+        } else {
+            assertFalse(IOSubsystem.EPOLL.equals(ioHandler), "Expected to not be using Epoll but got EPOLL");
+        }
+    }
+
+    private void assertKQueue(boolean expected, Transport transport) throws Exception {
+        final IOSubsystem ioHandler = transport.getIOSubsystem();
+
+        if (expected) {
+            assertTrue(IOSubsystem.KQUEUE.equals(ioHandler), "Expected to be using KQueue but got " + ioHandler.toString());
+        } else {
+            assertFalse(IOSubsystem.KQUEUE.equals(ioHandler), "Expected to not be using KQueue but got KQueue");
         }
     }
 }
