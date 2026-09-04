@@ -46,18 +46,6 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
      */
     public static final String CATCH_ALL_WILDCARD = "*";
 
-    /**
-     * @deprecated new applications should use the ALLOWLIST_PROPERTY instead
-     */
-    @Deprecated
-    public static final String DEPRECATED_ALLOWLIST_PROPERTY = "org.apache.qpid.jms.deserialization.white_list";
-
-    /**
-     * @deprecated new applications should use the DENYLIST_PROPERTY instead
-     */
-    @Deprecated
-    public static final String DEPRECATED_DENYLIST_PROPERTY = "org.apache.qpid.jms.deserialization.black_list";
-
     public static final String ALLOWLIST_PROPERTY = "org.apache.qpid.jms.deserialization.allow_list";
     public static final String DENYLIST_PROPERTY = "org.apache.qpid.jms.deserialization.deny_list";
 
@@ -68,22 +56,8 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
      * Creates an instance of this policy with default configuration.
      */
     public JmsDefaultDeserializationPolicy() {
-
-        // TODO: Upon removal of deprecated constants replace with call to use the CATCH_ALL_WILDCARD as the default
-        //        final String allowList = System.getProperty(ALLOWLIST_PROPERTY, CATCH_ALL_WILDCARD);
-
-        final String deprecatedAllowList = System.getProperty(DEPRECATED_ALLOWLIST_PROPERTY, CATCH_ALL_WILDCARD);
-        final String allowList = System.getProperty(ALLOWLIST_PROPERTY, deprecatedAllowList);
-
-        setAllowList(allowList);
-
-        // TODO: Upon removal of deprecated constants replace with call to use the no default value method
-        //        final String denyList = System.getProperty(DENYLIST_PROPERTY);
-
-        final String deprecatedDenyList = System.getProperty(DEPRECATED_DENYLIST_PROPERTY);
-        final String denyList = System.getProperty(DENYLIST_PROPERTY, deprecatedDenyList);
-
-        setDenyList(denyList);
+        setAllowList(System.getProperty(ALLOWLIST_PROPERTY, CATCH_ALL_WILDCARD));
+        setDenyList(System.getProperty(DENYLIST_PROPERTY));
     }
 
     /**
@@ -153,16 +127,6 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
 
     /**
      * @return the allow list configured on this policy instance.
-     *
-     * @deprecated Use the replacement method {@link #getAllowList()}
-     */
-    @Deprecated
-    public String getWhiteList() {
-        return getAllowList();
-    }
-
-    /**
-     * @return the allow list configured on this policy instance.
      */
     public String getAllowList() {
         Iterator<String> entries = allowList.iterator();
@@ -176,16 +140,6 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
         }
 
         return builder.toString();
-    }
-
-    /**
-     * @return the deny list configured on this policy instance.
-     *
-     * @deprecated Use the replacement method {@link #getDenyList()}
-     */
-    @Deprecated
-    public String getBlackList() {
-        return getDenyList();
     }
 
     /**
@@ -206,17 +160,6 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
     }
 
     /**
-     * @param allowList
-     *      the allow list that this policy is configured to recognize.
-     *
-     * @deprecated Use the replacement method {@link #setAllowList(String)}
-     */
-    @Deprecated
-    public void setWhiteList(String allowList) {
-        setAllowList(allowList);
-    }
-
-    /**
      * Replaces the currently configured allow list with a comma separated
      * string containing the new allow list. Null or empty string denotes
      * no allow list entries, {@value #CATCH_ALL_WILDCARD} indicates that
@@ -232,17 +175,6 @@ public class JmsDefaultDeserializationPolicy implements JmsDeserializationPolicy
         }
 
         this.allowList = list;
-    }
-
-    /**
-     * @param denyList
-     *      the deny list that this policy is configured to recognize.
-     *
-     * @deprecated Use the replacement method {@link #setDenyList(String)}
-     */
-    @Deprecated
-    public void setBlackList(String denyList) {
-        setDenyList(denyList);
     }
 
     /**

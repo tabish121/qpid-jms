@@ -35,12 +35,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import jakarta.jms.Connection;
-import jakarta.jms.ExceptionListener;
-import jakarta.jms.JMSContext;
-import jakarta.jms.JMSException;
-import jakarta.jms.JMSRuntimeException;
-
 import org.apache.qpid.jms.policy.JmsDefaultDeserializationPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultPrefetchPolicy;
 import org.apache.qpid.jms.policy.JmsDefaultPresettlePolicy;
@@ -51,6 +45,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Connection;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSContext;
+import jakarta.jms.JMSException;
+import jakarta.jms.JMSRuntimeException;
 
 public class JmsConnectionFactoryTest extends QpidJmsTestCase {
 
@@ -196,7 +196,7 @@ public class JmsConnectionFactoryTest extends QpidJmsTestCase {
 
         assertFalse(deserializationPolicy.getAllowList().equals(TRUSTED_PACKAGES));
 
-        deserializationPolicy.setWhiteList(TRUSTED_PACKAGES);
+        deserializationPolicy.setAllowList(TRUSTED_PACKAGES);
 
         JmsConnection connection = (JmsConnection) factory.createConnection();
         assertNotNull(connection);
@@ -585,50 +585,6 @@ public class JmsConnectionFactoryTest extends QpidJmsTestCase {
         Map<String, String> props2 = ((JmsConnectionFactory)roundTripped).getProperties();
         assertTrue(props2.containsKey(messageIDTypeKey), "Props dont contain expected message ID policy change");
         assertEquals(messageIDTypeValue, props2.get(messageIDTypeKey), "Unexpected value");
-
-        assertEquals(props, props2, "Properties were not equal");
-    }
-
-    /**
-     * The deserialization policy is maintained in a child-object, which we extract the properties from
-     * when serializing the factory. Ensure this functions by doing a round trip on a factory
-     * configured with some new deserialization configuration via the URI.
-     *
-     * @throws Exception if an error occurs during the test.
-     *
-     * @deprecated Remove this test when removing the deprecated configuration options
-     */
-    @Deprecated
-    @Test
-    public void testSerializeThenDeserializeMaintainsDeserializationPolicyDeprecated() throws Exception {
-        String allowListValue = "java.lang";
-        String allowListKey = "deserializationPolicy.whiteList";
-
-        String denyListValue = "java.lang.foo";
-        String denyListKey = "deserializationPolicy.blackList";
-
-        String uri = "amqp://localhost:1234?jms." + allowListKey + "=" + allowListValue + "&jms." + denyListKey + "=" + denyListValue;
-
-        JmsConnectionFactory cf = new JmsConnectionFactory(uri);
-        Map<String, String> props = cf.getProperties();
-
-        assertTrue(props.containsKey(allowListKey), "Props dont contain expected deserialization policy change");
-        assertEquals(allowListValue, props.get(allowListKey), "Unexpected value");
-
-        assertTrue(props.containsKey(denyListKey), "Props dont contain expected deserialization policy change");
-        assertEquals(denyListValue, props.get(denyListKey), "Unexpected value");
-
-        Object roundTripped = roundTripSerialize(cf);
-
-        assertNotNull(roundTripped, "Null object returned");
-        assertEquals(JmsConnectionFactory.class, roundTripped.getClass(), "Unexpected type");
-
-        Map<String, String> props2 = ((JmsConnectionFactory)roundTripped).getProperties();
-        assertTrue(props2.containsKey(allowListKey), "Props dont contain expected deserialization policy change");
-        assertEquals(allowListValue, props2.get(allowListKey), "Unexpected value");
-
-        assertTrue(props2.containsKey(denyListKey), "Props dont contain expected deserialization policy change");
-        assertEquals(denyListValue, props2.get(denyListKey), "Unexpected value");
 
         assertEquals(props, props2, "Properties were not equal");
     }
