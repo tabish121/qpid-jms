@@ -165,35 +165,12 @@ public class JmsDefaultDeserializationPolicyTest {
         assertTrue(policy2.equals(policy1));
     }
 
-    @Deprecated
-    @Test
-    public void testJmsDefaultDeserializationPolicyDeprecated() {
-        JmsDefaultDeserializationPolicy policy = new JmsDefaultDeserializationPolicy();
-
-        assertFalse(policy.getWhiteList().isEmpty());
-        assertTrue(policy.getBlackList().isEmpty());
-    }
-
     @Test
     public void testJmsDefaultDeserializationPolicy() {
         JmsDefaultDeserializationPolicy policy = new JmsDefaultDeserializationPolicy();
 
         assertFalse(policy.getAllowList().isEmpty());
         assertTrue(policy.getDenyList().isEmpty());
-    }
-
-    @Deprecated
-    @Test
-    public void testJmsDefaultDeserializationPolicyCopyCtorDeprecated() {
-        JmsDefaultDeserializationPolicy policy = new JmsDefaultDeserializationPolicy();
-
-        policy.setWhiteList("a.b.c");
-        policy.setBlackList("d.e.f");
-
-        JmsDefaultDeserializationPolicy copy = new JmsDefaultDeserializationPolicy(policy);
-
-        assertEquals("a.b.c", copy.getWhiteList());
-        assertEquals("d.e.f", copy.getBlackList());
     }
 
     @Test
@@ -209,20 +186,6 @@ public class JmsDefaultDeserializationPolicyTest {
         assertEquals("d.e.f", copy.getDenyList());
     }
 
-    @Deprecated
-    @Test
-    public void testJmsDefaultDeserializationPolicyCopyDeprecated() {
-        JmsDefaultDeserializationPolicy policy = new JmsDefaultDeserializationPolicy();
-
-        policy.setWhiteList("a.b.c");
-        policy.setBlackList("d.e.f");
-
-        JmsDefaultDeserializationPolicy copy = (JmsDefaultDeserializationPolicy) policy.copy();
-
-        assertEquals("a.b.c", copy.getWhiteList());
-        assertEquals("d.e.f", copy.getBlackList());
-    }
-
     @Test
     public void testJmsDefaultDeserializationPolicyCopy() {
         JmsDefaultDeserializationPolicy policy = new JmsDefaultDeserializationPolicy();
@@ -234,39 +197,6 @@ public class JmsDefaultDeserializationPolicyTest {
 
         assertEquals("a.b.c", copy.getAllowList());
         assertEquals("d.e.f", copy.getDenyList());
-    }
-
-    @Deprecated
-    @Test
-    public void testSetWhiteList() {
-        JmsDefaultDeserializationPolicy policy = new JmsDefaultDeserializationPolicy();
-        assertNotNull(policy.getWhiteList());
-
-        policy.setWhiteList(null);
-        assertNotNull(policy.getWhiteList());
-        assertTrue(policy.getWhiteList().isEmpty());
-        assertNotNull(policy.getAllowList());
-        assertTrue(policy.getAllowList().isEmpty());
-
-        policy.setWhiteList("");
-        assertNotNull(policy.getWhiteList());
-        assertTrue(policy.getWhiteList().isEmpty());
-        assertNotNull(policy.getAllowList());
-        assertTrue(policy.getAllowList().isEmpty());
-
-        policy.setWhiteList("*");
-        assertNotNull(policy.getWhiteList());
-        assertFalse(policy.getWhiteList().isEmpty());
-        assertNotNull(policy.getAllowList());
-        assertFalse(policy.getAllowList().isEmpty());
-
-        policy.setWhiteList("a,b,c");
-        assertNotNull(policy.getWhiteList());
-        assertNotNull(policy.getAllowList());
-        assertFalse(policy.getWhiteList().isEmpty());
-        assertFalse(policy.getAllowList().isEmpty());
-        assertEquals("a,b,c", policy.getWhiteList());
-        assertEquals("a,b,c", policy.getAllowList());
     }
 
     @Test
@@ -290,39 +220,6 @@ public class JmsDefaultDeserializationPolicyTest {
         assertNotNull(policy.getAllowList());
         assertFalse(policy.getAllowList().isEmpty());
         assertEquals("a,b,c", policy.getAllowList());
-    }
-
-    @Deprecated
-    @Test
-    public void testSetBlackList() {
-        JmsDefaultDeserializationPolicy policy = new JmsDefaultDeserializationPolicy();
-        assertNotNull(policy.getBlackList());
-
-        policy.setBlackList(null);
-        assertNotNull(policy.getBlackList());
-        assertTrue(policy.getBlackList().isEmpty());
-        assertNotNull(policy.getDenyList());
-        assertTrue(policy.getDenyList().isEmpty());
-
-        policy.setBlackList("");
-        assertNotNull(policy.getBlackList());
-        assertTrue(policy.getBlackList().isEmpty());
-        assertNotNull(policy.getDenyList());
-        assertTrue(policy.getDenyList().isEmpty());
-
-        policy.setBlackList("*");
-        assertNotNull(policy.getBlackList());
-        assertFalse(policy.getBlackList().isEmpty());
-        assertNotNull(policy.getDenyList());
-        assertFalse(policy.getDenyList().isEmpty());
-
-        policy.setBlackList("a,b,c");
-        assertNotNull(policy.getBlackList());
-        assertFalse(policy.getBlackList().isEmpty());
-        assertEquals("a,b,c", policy.getBlackList());
-        assertNotNull(policy.getDenyList());
-        assertFalse(policy.getDenyList().isEmpty());
-        assertEquals("a,b,c", policy.getDenyList());
     }
 
     @Test
