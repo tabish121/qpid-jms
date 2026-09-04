@@ -20,6 +20,7 @@ import static java.util.Objects.requireNonNull;
 
 import java.util.concurrent.ThreadFactory;
 
+import org.apache.qpid.jms.transports.Transport.IOLayer;
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,9 +32,42 @@ import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 public enum EventLoopType {
-    EPOLL, KQUEUE, NIO;
+
+    IO_URING {
+
+        @Override
+        public IOLayer ioLayerType() {
+            return IOLayer.IO_URING;
+        }
+    },
+
+    EPOLL {
+
+        @Override
+        public IOLayer ioLayerType() {
+            return IOLayer.EPOLL;
+        }
+    },
+
+    KQUEUE {
+
+        @Override
+        public IOLayer ioLayerType() {
+            return IOLayer.KQUEUE;
+        }
+    },
+
+    NIO {
+
+        @Override
+        public IOLayer ioLayerType() {
+            return IOLayer.NIO;
+        }
+    };
 
     private static final Logger LOG = LoggerFactory.getLogger(EventLoopType.class);
+
+    public abstract IOLayer ioLayerType();
 
     public void configureBootstrap(final Bootstrap bootstrap) {
         configureChannel(this, requireNonNull(bootstrap));
@@ -45,6 +79,9 @@ public enum EventLoopType {
 
     private static EventLoopGroup createEventLoopGroup(final EventLoopType type, final int threads, final ThreadFactory ioThreadFactory) {
         switch (type) {
+            case IO_URING:
+                LOG.trace("Netty Transport using IO_Uring mode");
+                return IoUringSupport.createGroup(threads, ioThreadFactory);
             case EPOLL:
                 LOG.trace("Netty Transport using Epoll mode");
                 return EpollSupport.createGroup(threads, ioThreadFactory);
@@ -61,6 +98,9 @@ public enum EventLoopType {
 
     private static void configureChannel(final EventLoopType type, final Bootstrap bootstrap) {
         switch (type) {
+            case IO_URING:
+                bootstrap.channel(IoUringSupport.getChannelClass());
+                break;
             case EPOLL:
                 bootstrap.channel(EpollSupport.getChannelClass());
                 break;
@@ -78,6 +118,7 @@ public enum EventLoopType {
     public static EventLoopType valueOf(final TransportOptions transportOptions) {
         final boolean useKQueue = KQueueSupport.isAvailable(transportOptions);
         final boolean useEpoll = EpollSupport.isAvailable(transportOptions);
+        final boolean useIoUring = IoUringSupport.isAvailable(transportOptions);
 
         if (useKQueue) {
             return KQUEUE;
@@ -85,6 +126,10 @@ public enum EventLoopType {
 
         if (useEpoll) {
             return EPOLL;
+        }
+
+        if (useIoUring) {
+            return IO_URING;
         }
 
         return NIO;

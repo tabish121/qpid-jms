@@ -40,6 +40,7 @@ public class TransportOptions implements Cloneable {
     public static final int DEFAULT_CONNECT_TIMEOUT = 60000;
     public static final int DEFAULT_TCP_PORT = 5672;
     public static final int DEFAULT_SHARED_EVENT_LOOP_THREADS = -1;
+    public static final boolean DEFAULT_USE_IO_URING = false;
     public static final boolean DEFAULT_USE_EPOLL = true;
     public static final boolean DEFAULT_USE_KQUEUE = false;
     public static final boolean DEFAULT_TRACE_BYTES = false;
@@ -70,6 +71,7 @@ public class TransportOptions implements Cloneable {
     private int defaultTcpPort = DEFAULT_TCP_PORT;
     private String localAddress;
     private int localPort = DEFAULT_LOCAL_PORT;
+    private boolean useIoUring = DEFAULT_USE_IO_URING;
     private boolean useEpoll = DEFAULT_USE_EPOLL;
     private boolean useKQueue = DEFAULT_USE_KQUEUE;
     private boolean traceBytes = DEFAULT_TRACE_BYTES;
@@ -287,6 +289,23 @@ public class TransportOptions implements Cloneable {
      */
     public void setUseKQueue(boolean useKQueue) {
         this.useKQueue = useKQueue;
+    }
+
+    /**
+     * @return true if the netty io_uring transport can be used if available on this platform.
+     */
+    public boolean isUseIoUring() {
+        return useIoUring;
+    }
+
+    /**
+     * Determines if the netty io_uring transport can be used if available on this platform.
+     *
+     * @param useIoUring
+     * 		should use of available io_uring transport be used.
+     */
+    public void setUseIoUring(boolean useIoUring) {
+        this.useIoUring = useIoUring;
     }
 
     /**
@@ -601,6 +620,7 @@ public class TransportOptions implements Cloneable {
         copy.setLocalAddress(getLocalAddress());
         copy.setLocalPort(getLocalPort());
         copy.setSharedEventLoopThreads(getSharedEventLoopThreads());
+        copy.setUseIoUring(isUseIoUring());
 
         return copy;
     }

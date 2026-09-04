@@ -75,6 +75,7 @@
 
     <jacoco-config />
 
+    <netty-transport-native-io-uring-classifier>linux-x86_64</netty-transport-native-io-uring-classifier>
     <netty-transport-native-epoll-classifier>linux-x86_64</netty-transport-native-epoll-classifier>
     <netty-transport-native-kqueue-classifier>osx-x86_64</netty-transport-native-kqueue-classifier>
   </properties>
@@ -174,6 +175,17 @@
         <artifactId>netty-transport-native-kqueue</artifactId>
         <version>${netty-version}</version>
         <classifier>${netty-transport-native-kqueue-classifier}</classifier>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-transport-classes-io_uring</artifactId>
+        <version>${netty-version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-transport-native-io_uring</artifactId>
+        <version>${netty-version}</version>
+        <classifier>${netty-transport-native-io-uring-classifier}</classifier>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
