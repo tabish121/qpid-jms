@@ -93,7 +93,6 @@
 
   <modules>
     <module>qpid-jms-client</module>
-    <module>qpid-jms-discovery</module>
     <module>qpid-jms-examples</module>
     <module>qpid-jms-docs</module>
     <module>apache-qpid-jms</module>
@@ -105,11 +104,6 @@
       <dependency>
         <groupId>org.apache.qpid</groupId>
         <artifactId>qpid-jms-client</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.apache.qpid</groupId>
-        <artifactId>qpid-jms-discovery</artifactId>
         <version>${project.version}</version>
       </dependency>
       <!-- Required dependencies -->
