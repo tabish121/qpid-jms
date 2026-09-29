@@ -34,7 +34,7 @@ public class DiscoveryProviderFactoryTest {
 
     @Test
     public void testCreateDiscoveryProvider() throws Exception {
-        URI discoveryUri = new URI("discovery:(multicast://default)");
+        URI discoveryUri = new URI("discovery:(file://configuration.txt?updateInterval=60000)");
         Provider provider = DiscoveryProviderFactory.create(discoveryUri);
 
         assertNotNull(provider, "Provider was not created");
@@ -70,7 +70,7 @@ public class DiscoveryProviderFactoryTest {
 
         assertFalse(String.valueOf(FailoverProvider.DEFAULT_RECONNECT_BACKOFF_MULTIPLIER).equals(optionValue));
 
-        URI discoveryUri = new URI("discovery:(multicast://default)?" + optionPrefix  + optionKey + "=" + optionValue);
+        URI discoveryUri = new URI("discovery:(file://configuration.txt?updateInterval=60000)?" + optionPrefix  + optionKey + "=" + optionValue);
         Provider provider = DiscoveryProviderFactory.create(discoveryUri);
 
         assertNotNull(provider, "Provider was not created");
@@ -103,7 +103,7 @@ public class DiscoveryProviderFactoryTest {
     private void doCreateDiscoveryProviderWithNestedOptionsTestImpl(String optionPrefix) throws URISyntaxException, Exception {
         String clientIdOptionKey = "jms.clientID";
         String clientIdValue = "myTestClientID";
-        URI discoveryUri = new URI("discovery:(multicast://default)?" + optionPrefix  + clientIdOptionKey + "=" + clientIdValue);
+        URI discoveryUri = new URI("discovery:(file://configuration.txt)?" + optionPrefix  + clientIdOptionKey + "=" + clientIdValue);
         Provider provider = DiscoveryProviderFactory.create(discoveryUri);
 
         assertNotNull(provider, "Provider was not created");
@@ -133,7 +133,7 @@ public class DiscoveryProviderFactoryTest {
     }
 
     private void doCreateDiscoveryProviderWithUnusedMainOptionTestImpl(String optionPrefix) throws URISyntaxException, Exception {
-        URI discoveryUri = new URI("discovery:(multicast://default)?" + optionPrefix  + "unusedOption=something");
+        URI discoveryUri = new URI("discovery:(file://configuration.txt)?" + optionPrefix  + "unusedOption=something");
 
         try {
             DiscoveryProviderFactory.create(discoveryUri);
