@@ -44,7 +44,7 @@ import org.apache.qpid.jms.test.Wait;
 import org.apache.qpid.jms.test.proxy.TestProxy;
 import org.apache.qpid.jms.test.proxy.TestProxy.ProxyType;
 import org.apache.qpid.jms.transports.Transport;
-import org.apache.qpid.jms.transports.Transport.IOSubsystem;
+import org.apache.qpid.jms.transports.Transport.IOLayer;
 import org.apache.qpid.jms.transports.TransportListener;
 import org.apache.qpid.jms.transports.TransportOptions;
 import org.apache.qpid.jms.util.QpidJMSThreadFactory;
@@ -59,6 +59,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.Epoll;
 import io.netty.channel.kqueue.KQueue;
+import io.netty.channel.uring.IoUring;
 import io.netty.handler.proxy.ProxyHandler;
 import io.netty.handler.proxy.Socks5ProxyHandler;
 import io.netty.util.ResourceLeakDetector;
@@ -394,6 +395,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             final TransportOptions sharedTransportOptions = createClientOptions();
             sharedTransportOptions.setUseKQueue(false);
             sharedTransportOptions.setUseEpoll(false);
+            sharedTransportOptions.setUseIoUring(false);
             sharedTransportOptions.setSharedEventLoopThreads(1);
 
             EventLoopGroupRef groupRef = null;
@@ -433,6 +435,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             final TransportOptions sharedTransportOptions = createClientOptions();
             sharedTransportOptions.setUseKQueue(false);
             sharedTransportOptions.setUseEpoll(false);
+            sharedTransportOptions.setUseIoUring(false);
             sharedTransportOptions.setSharedEventLoopThreads(1);
 
             Transport sharedNioTransport1 = createConnectedTransport(serverLocation, sharedTransportOptions);
@@ -474,6 +477,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             final TransportOptions sharedTransportOptions1 = createClientOptions();
             sharedTransportOptions1.setUseKQueue(false);
             sharedTransportOptions1.setUseEpoll(false);
+            sharedTransportOptions1.setUseIoUring(false);
             sharedTransportOptions1.setSharedEventLoopThreads(1);
             Transport nioSharedTransport1 = createConnectedTransport(serverLocation, sharedTransportOptions1);
             transports.add(nioSharedTransport1);
@@ -481,6 +485,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             final TransportOptions sharedTransportOptions2 = createClientOptions();
             sharedTransportOptions2.setUseKQueue(false);
             sharedTransportOptions2.setUseEpoll(false);
+            sharedTransportOptions2.setUseIoUring(false);
             sharedTransportOptions2.setSharedEventLoopThreads(2);
             Transport nioSharedTransport2 = createConnectedTransport(serverLocation, sharedTransportOptions2);
             transports.add(nioSharedTransport2);
@@ -519,6 +524,7 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             final TransportOptions unsharedTransportOptions = createClientOptions();
             unsharedTransportOptions.setUseKQueue(false);
             unsharedTransportOptions.setUseEpoll(false);
+            unsharedTransportOptions.setUseIoUring(false);
             unsharedTransportOptions.setSharedEventLoopThreads(0);
 
             Transport unsharedNioTransport1 = createConnectedTransport(serverLocation, unsharedTransportOptions);
@@ -885,12 +891,56 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
             TransportOptions options = createClientOptions();
             options.setUseKQueue(useKQueue);
             options.setUseEpoll(false);
+            options.setUseIoUring(false);
             Transport transport = createConnectedTransport(serverLocation, options);
 
             assertTrue(transport.isConnected());
             assertEquals(serverLocation, transport.getRemoteLocation());
 
             assertKQueue(useKQueue, transport);
+
+            transport.close();
+
+            // Additional close should not fail or cause other problems.
+            transport.close();
+        }
+
+        assertTrue(!transportClosed);  // Normal shutdown does not trigger the event.
+        assertTrue(exceptions.isEmpty());
+        assertTrue(data.isEmpty());
+    }
+
+    @Test
+    @Timeout(60)
+    public void testConnectToServerWithIoUringEnabled() throws Exception {
+        doTestIoUringSupport(true);
+    }
+
+    @Test
+    @Timeout(60)
+    public void testConnectToServerWithIoUringDisabled() throws Exception {
+        doTestIoUringSupport(false);
+    }
+
+    private void doTestIoUringSupport(boolean useIoUring) throws Exception {
+        assumeTrue(IoUring.isAvailable());
+
+        try (NettyEchoServer server = createEchoServer(createServerOptions())) {
+            server.start();
+
+            int port = server.getServerPort();
+            URI serverLocation = new URI("tcp://localhost:" + port);
+
+            TransportOptions options = createClientOptions();
+            options.setUseIoUring(useIoUring);
+            options.setUseEpoll(false);
+            options.setUseKQueue(false);
+            Transport transport = createConnectedTransport(serverLocation, options);
+
+            assertTrue(transport.isConnected());
+            assertEquals(serverLocation, transport.getRemoteLocation());
+
+            assertIoUring(useIoUring, transport);
 
             transport.close();
 
@@ -988,22 +1038,32 @@ public class NettyTcpTransportTest extends QpidJmsTestCase {
     }
 
     private void assertEpoll(boolean expected, Transport transport) throws Exception {
-        final IOSubsystem ioHandler = transport.getIOSubsystem();
+        final IOLayer ioHandler = transport.getIOLayer();
 
         if (expected) {
-            assertTrue(IOSubsystem.EPOLL.equals(ioHandler), "Expected to be using Epoll but got " + ioHandler.toString());
+            assertTrue(IOLayer.EPOLL.equals(ioHandler), "Expected to be using Epoll but got " + ioHandler.toString());
         } else {
-            assertFalse(IOSubsystem.EPOLL.equals(ioHandler), "Expected to not be using Epoll but got EPOLL");
+            assertFalse(IOLayer.EPOLL.equals(ioHandler), "Expected to not be using Epoll but got EPOLL");
         }
     }
 
     private void assertKQueue(boolean expected, Transport transport) throws Exception {
-        final IOSubsystem ioHandler = transport.getIOSubsystem();
+        final IOLayer ioHandler = transport.getIOLayer();
 
         if (expected) {
-            assertTrue(IOSubsystem.KQUEUE.equals(ioHandler), "Expected to be using KQueue but got " + ioHandler.toString());
+            assertTrue(IOLayer.KQUEUE.equals(ioHandler), "Expected to be using KQueue but got " + ioHandler.toString());
         } else {
-            assertFalse(IOSubsystem.KQUEUE.equals(ioHandler), "Expected to not be using KQueue but got KQueue");
+            assertFalse(IOLayer.KQUEUE.equals(ioHandler), "Expected to not be using KQueue but got KQueue");
+        }
+    }
+
+    private void assertIoUring(boolean expected, Transport transport) throws Exception {
+        final IOLayer ioHandler = transport.getIOLayer();
+
+        if (expected) {
+            assertTrue(IOLayer.IO_URING.equals(ioHandler), "Expected to be using io_uring but got " + ioHandler.toString());
+        } else {
+            assertFalse(IOLayer.IO_URING.equals(ioHandler), "Expected to not be using io_uring but got KQueue");
         }
     }
 }

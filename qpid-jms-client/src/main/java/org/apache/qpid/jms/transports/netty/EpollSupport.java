@@ -23,7 +23,7 @@ import org.apache.qpid.jms.transports.TransportOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.netty.channel.Channel;
+import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.epoll.Epoll;
@@ -35,12 +35,8 @@ public class EpollSupport {
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     public static boolean isAvailable(TransportOptions transportOptions) {
-        return transportOptions.isUseEpoll() && isAvailable();
-    }
-
-    public static boolean isAvailable() {
         try {
-            return Epoll.isAvailable();
+            return transportOptions.isUseEpoll() && Epoll.isAvailable();
         } catch (NoClassDefFoundError ncdfe) {
             LOG.debug("Unable to check for Epoll support due to missing class definition", ncdfe);
             return false;
@@ -48,21 +44,10 @@ public class EpollSupport {
     }
 
     public static EventLoopGroup createGroup(int nThreads, ThreadFactory ioThreadFactory) {
-        ensureAvailability();
-
         return new MultiThreadIoEventLoopGroup(nThreads, ioThreadFactory, EpollIoHandler.newFactory());
     }
 
-    public static Class<? extends Channel> getChannelClass() {
-        ensureAvailability();
-
-        return EpollSocketChannel.class;
-    }
-
-    private static void ensureAvailability() {
-        if (!isAvailable()) {
-            throw new UnsupportedOperationException(
-                "Netty Epoll support is not enabled because the Netty library indicates it is not present or disabled");
-        }
+    public static void createChannel(Bootstrap bootstrap) {
+        bootstrap.channel(EpollSocketChannel.class);
     }
 }

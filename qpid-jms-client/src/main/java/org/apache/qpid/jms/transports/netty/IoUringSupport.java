@@ -26,28 +26,28 @@ import org.slf4j.LoggerFactory;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
-import io.netty.channel.kqueue.KQueue;
-import io.netty.channel.kqueue.KQueueIoHandler;
-import io.netty.channel.kqueue.KQueueSocketChannel;
+import io.netty.channel.uring.IoUring;
+import io.netty.channel.uring.IoUringIoHandler;
+import io.netty.channel.uring.IoUringSocketChannel;
 
-public class KQueueSupport {
+public class IoUringSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     public static boolean isAvailable(TransportOptions transportOptions) {
         try {
-            return transportOptions.isUseKQueue() && KQueue.isAvailable();
-        } catch (NoClassDefFoundError ncdfe) {
-            LOG.debug("Unable to check for KQueue support due to missing class definition", ncdfe);
+            return transportOptions.isUseIoUring() && IoUring.isAvailable();
+        } catch (UnsatisfiedLinkError | Exception e) {
+            LOG.debug("Unable to check for io_uring support due to missing class definition", e);
             return false;
         }
     }
 
     public static EventLoopGroup createGroup(int nThreads, ThreadFactory ioThreadFactory) {
-        return new MultiThreadIoEventLoopGroup(nThreads, ioThreadFactory, KQueueIoHandler.newFactory());
+        return new MultiThreadIoEventLoopGroup(nThreads, ioThreadFactory, IoUringIoHandler.newFactory());
     }
 
     public static void createChannel(Bootstrap bootstrap) {
-        bootstrap.channel(KQueueSocketChannel.class);
+        bootstrap.channel(IoUringSocketChannel.class);
     }
 }
