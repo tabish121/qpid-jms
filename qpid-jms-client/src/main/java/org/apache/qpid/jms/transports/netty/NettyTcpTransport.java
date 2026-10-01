@@ -68,7 +68,7 @@ public class NettyTcpTransport implements Transport {
 
     public static final int DEFAULT_MAX_FRAME_SIZE = 65535;
 
-    protected IOSubsystem ioSubsystem = IOSubsystem.NIO;
+    protected IOLayer ioLayerType = IOLayer.NIO;
     protected EventLoopGroupRef groupRef;
     protected Channel channel;
     protected TransportListener listener;
@@ -144,17 +144,12 @@ public class NettyTcpTransport implements Transport {
             groupRef = unsharedGroup(eventLoopType, ioThreadfactory);
         }
 
-        switch (eventLoopType) {
-            case EPOLL -> ioSubsystem = IOSubsystem.EPOLL;
-            case KQUEUE -> ioSubsystem = IOSubsystem.KQUEUE;
-            case NIO -> ioSubsystem = IOSubsystem.NIO;
-            default -> ioSubsystem = IOSubsystem.OTHER;
-        }
-
         Bootstrap bootstrap = new Bootstrap();
         bootstrap.group(groupRef.group());
 
         eventLoopType.configureBootstrap(bootstrap);
+
+        ioLayerType = eventLoopType.ioLayerType();
 
         bootstrap.handler(new ChannelInitializer<Channel>() {
             @Override
@@ -215,8 +210,8 @@ public class NettyTcpTransport implements Transport {
     }
 
     @Override
-    public IOSubsystem getIOSubsystem() {
-        return ioSubsystem;
+    public IOLayer getIOLayer() {
+        return ioLayerType;
     }
 
     @Override
