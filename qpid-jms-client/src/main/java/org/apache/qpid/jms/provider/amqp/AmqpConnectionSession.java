@@ -90,8 +90,7 @@ public class AmqpConnectionSession extends AmqpSession {
         // without a known session to associate it with, we link up the consumer
         // to this session by adding this session as the provider hint on the
         // consumer's parent session ID.
-        if (resource instanceof AmqpConsumer) {
-            AmqpConsumer consumer = (AmqpConsumer) resource;
+        if (resource instanceof AmqpConsumer consumer) {
             consumer.getConsumerId().getParentId().setProviderHint(this);
         }
 

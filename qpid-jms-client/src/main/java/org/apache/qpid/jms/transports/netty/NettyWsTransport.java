@@ -139,6 +139,7 @@ public class NettyWsTransport extends NettyTcpTransport {
         LOG.trace("Channel has become active, awaiting WebSocket handshake! Channel is {}", channel);
     }
 
+    @Override
     protected void handleChannelInactive(Channel channel) throws Exception {
         try {
             if (handshakeTimeoutFuture != null) {
@@ -190,31 +191,27 @@ public class NettyWsTransport extends NettyTcpTransport {
                 handshaker.finishHandshake(ch, (FullHttpResponse) message);
                 LOG.trace("WebSocket Client connected! {}", ctx.channel());
                 // Now trigger super processing as we are really connected.
-                if(handshakeTimeoutFuture.cancel(false)) {
+                if (handshakeTimeoutFuture.cancel(false)) {
                     NettyWsTransport.super.handleConnected(ch);
                 }
                 return;
             }
 
             // We shouldn't get this since we handle the handshake previously.
-            if (message instanceof FullHttpResponse) {
-                FullHttpResponse response = (FullHttpResponse) message;
+            if (message instanceof FullHttpResponse response) {
                 throw new IllegalStateException(
                     "Unexpected FullHttpResponse (getStatus=" + response.status() +
                     ", content=" + response.content().toString(StandardCharsets.UTF_8) + ')');
             }
 
             WebSocketFrame frame = (WebSocketFrame) message;
-            if (frame instanceof TextWebSocketFrame) {
-                TextWebSocketFrame textFrame = (TextWebSocketFrame) frame;
+            if (frame instanceof TextWebSocketFrame textFrame) {
                 LOG.warn("WebSocket Client received message: " + textFrame.text());
                 ctx.fireExceptionCaught(new IOException("Received invalid frame over WebSocket."));
-            } else if (frame instanceof BinaryWebSocketFrame) {
-                BinaryWebSocketFrame binaryFrame = (BinaryWebSocketFrame) frame;
+            } else if (frame instanceof BinaryWebSocketFrame binaryFrame) {
                 LOG.trace("WebSocket Client received data: {} bytes", binaryFrame.content().readableBytes());
                 listener.onData(binaryFrame.content());
-            } else if (frame instanceof ContinuationWebSocketFrame) {
-                ContinuationWebSocketFrame continuationFrame = (ContinuationWebSocketFrame) frame;
+            } else if (frame instanceof ContinuationWebSocketFrame continuationFrame) {
                 LOG.trace("WebSocket Client received data continuation: {} bytes", continuationFrame.content().readableBytes());
                 listener.onData(continuationFrame.content());
             } else if (frame instanceof PingWebSocketFrame) {

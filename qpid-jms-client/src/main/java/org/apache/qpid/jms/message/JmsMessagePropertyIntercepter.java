@@ -41,13 +41,13 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
+import org.apache.qpid.jms.util.TypeConversionSupport;
+
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.Destination;
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
-
-import org.apache.qpid.jms.exceptions.JmsExceptionSupport;
-import org.apache.qpid.jms.util.TypeConversionSupport;
 
 /**
  * Utility class used to intercept calls to Message property gets and sets and map the
@@ -241,10 +241,10 @@ public class JmsMessagePropertyIntercepter {
                 try {
                     rc = (Integer) TypeConversionSupport.convert(value, Integer.class);
                 } catch (NumberFormatException nfe) {
-                    if (value instanceof String) {
-                        if (((String) value).equalsIgnoreCase("PERSISTENT")) {
+                    if (value instanceof String stringValue) {
+                        if (stringValue.equalsIgnoreCase("PERSISTENT")) {
                             rc = DeliveryMode.PERSISTENT;
-                        } else if (((String) value).equalsIgnoreCase("NON_PERSISTENT")) {
+                        } else if (stringValue.equalsIgnoreCase("NON_PERSISTENT")) {
                             rc = DeliveryMode.NON_PERSISTENT;
                         }
                     }

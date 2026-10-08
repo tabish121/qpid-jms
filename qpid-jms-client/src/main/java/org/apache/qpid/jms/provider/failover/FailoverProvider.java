@@ -218,12 +218,10 @@ public class FailoverProvider extends DefaultProviderListener implements Provide
     public void create(final JmsResource resource, AsyncResult request) throws ProviderException {
         checkClosed();
         final FailoverRequest pending;
-        if (resource instanceof JmsConnectionInfo) {
+        if (resource instanceof JmsConnectionInfo connectionInfo) {
             pending = new CreateConnectionRequest(request) {
                 @Override
                 public void doTask(Provider provider) throws ProviderException {
-                    JmsConnectionInfo connectionInfo = (JmsConnectionInfo) resource;
-
                     // Collect the timeouts we will handle in this provider.
                     closeTimeout = connectionInfo.getCloseTimeout();
                     sendTimeout = connectionInfo.getSendTimeout();
@@ -246,9 +244,8 @@ public class FailoverProvider extends DefaultProviderListener implements Provide
 
                 @Override
                 public boolean succeedsWhenOffline() {
-                    if (resource instanceof JmsTransactionInfo) {
+                    if (resource instanceof JmsTransactionInfo transactionInfo) {
                         // Tag as in-doubt and let recovery on reconnect sort it out.
-                        JmsTransactionInfo transactionInfo = (JmsTransactionInfo) resource;
                         transactionInfo.setInDoubt(true);
 
                         return true;
@@ -1396,8 +1393,7 @@ public class FailoverProvider extends DefaultProviderListener implements Provide
         }
 
         private boolean isStoppageCause(ProviderException cause) {
-            if (cause instanceof ProviderConnectionSecuritySaslException) {
-                ProviderConnectionSecuritySaslException saslFailure = (ProviderConnectionSecuritySaslException) cause;
+            if (cause instanceof ProviderConnectionSecuritySaslException saslFailure) {
                 return !saslFailure.isSysTempFailure();
             } else if (cause instanceof ProviderConnectionSecurityException ) {
                 return true;

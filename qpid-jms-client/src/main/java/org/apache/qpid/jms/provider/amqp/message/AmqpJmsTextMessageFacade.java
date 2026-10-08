@@ -70,8 +70,7 @@ public class AmqpJmsTextMessageFacade extends AmqpJmsMessageFacade implements Jm
 
         if (body == null) {
             return null;
-        } else if (body instanceof Data) {
-            Data data = (Data) body;
+        } else if (body instanceof Data data) {
             if (data.getValue() == null || data.getValue().getLength() == 0) {
                 return "";
             } else {
@@ -85,8 +84,8 @@ public class AmqpJmsTextMessageFacade extends AmqpJmsMessageFacade implements Jm
                     throw JmsExceptionSupport.create("Cannot decode String in " + charset.displayName(), e);
                 }
             }
-        } else if (body instanceof AmqpValue) {
-            Object value = ((AmqpValue) body).getValue();
+        } else if (body instanceof AmqpValue amqpValue) {
+            Object value = amqpValue.getValue();
 
             if (value == null || value instanceof String) {
                 return (String) value;

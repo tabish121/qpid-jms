@@ -20,6 +20,13 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Enumeration;
 
+import org.apache.qpid.jms.JmsConnection;
+import org.apache.qpid.jms.JmsDestination;
+import org.apache.qpid.jms.JmsQueue;
+import org.apache.qpid.jms.JmsTemporaryQueue;
+import org.apache.qpid.jms.JmsTemporaryTopic;
+import org.apache.qpid.jms.JmsTopic;
+
 import jakarta.jms.BytesMessage;
 import jakarta.jms.Destination;
 import jakarta.jms.JMSException;
@@ -33,13 +40,6 @@ import jakarta.jms.TemporaryQueue;
 import jakarta.jms.TemporaryTopic;
 import jakarta.jms.TextMessage;
 import jakarta.jms.Topic;
-
-import org.apache.qpid.jms.JmsConnection;
-import org.apache.qpid.jms.JmsDestination;
-import org.apache.qpid.jms.JmsQueue;
-import org.apache.qpid.jms.JmsTemporaryQueue;
-import org.apache.qpid.jms.JmsTemporaryTopic;
-import org.apache.qpid.jms.JmsTopic;
 
 /**
  * A helper class for converting normal JMS interfaces into the QpidJMS specific
@@ -67,11 +67,11 @@ public final class JmsMessageTransformation {
 
         if (destination != null) {
 
-            if (destination instanceof JmsDestination) {
-                result = (JmsDestination) destination;
-            } else if (destination instanceof Queue && destination instanceof Topic) {
-                String queueName = ((Queue) destination).getQueueName();
-                String topicName = ((Topic) destination).getTopicName();
+            if (destination instanceof JmsDestination jmsDestination) {
+                result = jmsDestination;
+            } else if (destination instanceof Queue queue && destination instanceof Topic topic) {
+                String queueName = queue.getQueueName();
+                String topicName = topic.getTopicName();
                 if (queueName != null && topicName == null) {
                     result = new JmsQueue(queueName);
                 } else if (queueName == null && topicName != null) {
@@ -80,14 +80,14 @@ public final class JmsMessageTransformation {
                     result = unresolvedDestinationHandler.transform(destination);
                 }
             } else {
-                if (destination instanceof TemporaryQueue) {
-                    result = new JmsTemporaryQueue(((TemporaryQueue) destination).getQueueName());
-                } else if (destination instanceof TemporaryTopic) {
-                    result = new JmsTemporaryTopic(((TemporaryTopic) destination).getTopicName());
-                } else if (destination instanceof Queue) {
-                    result = new JmsQueue(((Queue) destination).getQueueName());
-                } else if (destination instanceof Topic) {
-                    result = new JmsTopic(((Topic) destination).getTopicName());
+                if (destination instanceof TemporaryQueue tempQueue) {
+                    result = new JmsTemporaryQueue(tempQueue.getQueueName());
+                } else if (destination instanceof TemporaryTopic tempTopic) {
+                    result = new JmsTemporaryTopic(tempTopic.getTopicName());
+                } else if (destination instanceof Queue queue) {
+                    result = new JmsQueue(queue.getQueueName());
+                } else if (destination instanceof Topic topic) {
+                    result = new JmsTopic(topic.getTopicName());
                 } else {
                     result = unresolvedDestinationHandler.transform(destination);
                 }
@@ -115,38 +115,34 @@ public final class JmsMessageTransformation {
         JmsMessage jmsMessage = null;
         JmsMessageFactory factory = connection.getMessageFactory();
 
-        if (message instanceof BytesMessage) {
-            BytesMessage bytesMsg = (BytesMessage) message;
-            bytesMsg.reset();
+        if (message instanceof BytesMessage bytesMessage) {
+            bytesMessage.reset();
             JmsBytesMessage msg = factory.createBytesMessage();
             try {
                 for (;;) {
                     // Reads a byte from the message stream until the stream is empty
-                    msg.writeByte(bytesMsg.readByte());
+                    msg.writeByte(bytesMessage.readByte());
                 }
             } catch (MessageEOFException e) {
                 // Indicates all the bytes have been read from the source.
             }
 
             jmsMessage = msg;
-        } else if (message instanceof MapMessage) {
-            MapMessage mapMsg = (MapMessage) message;
+        } else if (message instanceof MapMessage mapMessage) {
             JmsMapMessage msg = factory.createMapMessage();
-            Enumeration<?> iter = mapMsg.getMapNames();
+            Enumeration<?> iter = mapMessage.getMapNames();
 
             while (iter.hasMoreElements()) {
                 String name = iter.nextElement().toString();
-                msg.setObject(name, mapMsg.getObject(name));
+                msg.setObject(name, mapMessage.getObject(name));
             }
 
             jmsMessage = msg;
-        } else if (message instanceof ObjectMessage) {
-            ObjectMessage objMsg = (ObjectMessage) message;
+        } else if (message instanceof ObjectMessage objMessage) {
             JmsObjectMessage msg = factory.createObjectMessage();
-            msg.setObject(objMsg.getObject());
+            msg.setObject(objMessage.getObject());
             jmsMessage = msg;
-        } else if (message instanceof StreamMessage) {
-            StreamMessage streamMessage = (StreamMessage) message;
+        } else if (message instanceof StreamMessage streamMessage) {
             streamMessage.reset();
             JmsStreamMessage msg = factory.createStreamMessage();
             Object obj = null;
@@ -160,10 +156,9 @@ public final class JmsMessageTransformation {
             }
 
             jmsMessage = msg;
-        } else if (message instanceof TextMessage) {
-            TextMessage textMsg = (TextMessage) message;
+        } else if (message instanceof TextMessage textMessage) {
             JmsTextMessage msg = factory.createTextMessage();
-            msg.setText(textMsg.getText());
+            msg.setText(textMessage.getText());
             jmsMessage = msg;
         } else {
             jmsMessage = factory.createMessage();

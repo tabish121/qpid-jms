@@ -226,8 +226,8 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
                             // NOTE - Spec is a bit vague here, we don't fail if already closed but
                             //        in this case we really aren't closed yet so there could be an
                             //        argument that at this point an exception is still valid.
-                            if (ex.getCause() instanceof InterruptedException) {
-                                throw (InterruptedException) ex.getCause();
+                            if (ex.getCause() instanceof InterruptedException iex) {
+                                throw iex;
                             }
                             LOG.debug("Failed destroying Connection resource: {}", ex.getMessage());
                         }
@@ -1468,8 +1468,8 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
                 if (session != null) {
                     session.setFailureCause(cause);
                 }
-            } else if (resource instanceof JmsProducerInfo) {
-                JmsSessionId parentId = ((JmsProducerInfo) resource).getParentId();
+            } else if (resource instanceof JmsProducerInfo producerInfo) {
+                JmsSessionId parentId = producerInfo.getParentId();
                 JmsSession session = sessions.get(parentId);
                 if (session != null) {
                     JmsMessageProducer producer = session.lookup((JmsProducerId) resource.getId());
@@ -1477,8 +1477,7 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
                         producer.setFailureCause(cause);
                     }
                 }
-            } else if (resource instanceof JmsConsumerInfo) {
-                JmsConsumerInfo consumerInfo = (JmsConsumerInfo) resource;
+            } else if (resource instanceof JmsConsumerInfo consumerInfo) {
                 if (consumerInfo.isConnectionConsumer()) {
                     JmsConnectionConsumer consumer = connectionConsumers.get(consumerInfo.getId());
                     if (consumer != null) {
@@ -1508,8 +1507,8 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
                                 listener.onSessionClosed(session, cause);
                             }
                         }
-                    } else if (resource instanceof JmsProducerInfo) {
-                        JmsSessionId parentId = ((JmsProducerInfo) resource).getParentId();
+                    } else if (resource instanceof JmsProducerInfo producerInfo) {
+                        JmsSessionId parentId = producerInfo.getParentId();
                         JmsSession session = sessions.get(parentId);
                         if (session != null) {
                             JmsMessageProducer producer = session.producerClosed((JmsProducerInfo) resource, cause);
@@ -1519,8 +1518,7 @@ public class JmsConnection implements AutoCloseable, Connection, TopicConnection
                                 }
                             }
                         }
-                    } else if (resource instanceof JmsConsumerInfo) {
-                        JmsConsumerInfo consumerInfo = (JmsConsumerInfo) resource;
+                    } else if (resource instanceof JmsConsumerInfo consumerInfo) {
                         if (consumerInfo.isConnectionConsumer()) {
                             JmsConnectionConsumer consumer = connectionConsumers.get(consumerInfo.getId());
                              if (consumer != null) {

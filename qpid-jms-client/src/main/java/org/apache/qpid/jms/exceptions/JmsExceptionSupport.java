@@ -16,6 +16,8 @@
  */
 package org.apache.qpid.jms.exceptions;
 
+import org.apache.qpid.jms.provider.ProviderException;
+
 import jakarta.jms.IllegalStateException;
 import jakarta.jms.IllegalStateRuntimeException;
 import jakarta.jms.InvalidClientIDException;
@@ -39,8 +41,6 @@ import jakarta.jms.TransactionInProgressException;
 import jakarta.jms.TransactionInProgressRuntimeException;
 import jakarta.jms.TransactionRolledBackException;
 import jakarta.jms.TransactionRolledBackRuntimeException;
-
-import org.apache.qpid.jms.provider.ProviderException;
 
 /**
  * Exception support class.
@@ -70,14 +70,14 @@ public final class JmsExceptionSupport {
      * @return a JMSException instance.
      */
     public static JMSException create(String message, Throwable cause) {
-        if (cause instanceof JMSException) {
-            return (JMSException) cause;
+        if (cause instanceof JMSException jmsEx) {
+            return jmsEx;
         }
 
-        if (cause.getCause() instanceof JMSException) {
-            return (JMSException) cause.getCause();
-        } else if (cause instanceof ProviderException) {
-            return ((ProviderException) cause).toJMSException();
+        if (cause.getCause() instanceof JMSException jmsEx) {
+            return jmsEx;
+        } else if (cause instanceof ProviderException providerEx) {
+            return providerEx.toJMSException();
         }
 
         if (message == null || message.isEmpty()) {
@@ -88,8 +88,8 @@ public final class JmsExceptionSupport {
         }
 
         JMSException exception = new JMSException(message);
-        if (cause instanceof Exception) {
-            exception.setLinkedException((Exception) cause);
+        if (cause instanceof Exception ex) {
+            exception.setLinkedException(ex);
         }
         exception.initCause(cause);
         return exception;
@@ -133,8 +133,8 @@ public final class JmsExceptionSupport {
         }
 
         MessageEOFException exception = new MessageEOFException(message);
-        if (cause instanceof Exception) {
-            exception.setLinkedException((Exception) cause);
+        if (cause instanceof Exception ex) {
+            exception.setLinkedException(ex);
         }
         exception.initCause(cause);
         return exception;
@@ -161,8 +161,8 @@ public final class JmsExceptionSupport {
         }
 
         MessageFormatException exception = new MessageFormatException(message);
-        if (cause instanceof Exception) {
-            exception.setLinkedException((Exception) cause);
+        if (cause instanceof Exception ex) {
+            exception.setLinkedException(ex);
         }
         exception.initCause(cause);
         return exception;
@@ -181,10 +181,10 @@ public final class JmsExceptionSupport {
         JMSRuntimeException result = null;
         JMSException source = null;
 
-        if (!(exception instanceof JMSException)) {
+        if (!(exception instanceof JMSException jmsEx)) {
             throw new JMSRuntimeException(exception.getMessage(), null, exception);
         } else {
-            source = (JMSException) exception;
+            source = jmsEx;
         }
 
         if (source instanceof IllegalStateException) {

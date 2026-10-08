@@ -65,19 +65,19 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
 
         if (body == null) {
             return null;
-        } else if (body instanceof AmqpValue) {
+        } else if (body instanceof AmqpValue amqpValue) {
             // TODO: This is assuming the object can be immediately returned, and is
             //       deeply Serializable. We will actually have to ensure elements are
             //       Serializable and e.g convert the Uint/Ubyte etc wrappers.
-            return (Serializable) ((AmqpValue) body).getValue();
+            return (Serializable) amqpValue.getValue();
         } else if (body instanceof Data) {
             // TODO: return as byte[]? ByteBuffer?
             throw new UnsupportedOperationException("Data support still to be added");
-        } else if (body instanceof AmqpSequence) {
+        } else if (body instanceof AmqpSequence amqpSequence) {
             // TODO: This is assuming the object can be immediately returned, and is
             //       deeply Serializable. We will actually have to ensure elements are
             //       Serializable and e.g convert the Uint/Ubyte etc wrappers.
-            return (Serializable) ((AmqpSequence) body).getValue();
+            return (Serializable) amqpSequence.getValue();
         } else {
             throw new IllegalStateException("Unexpected body type: " + body.getClass().getSimpleName());
         }
@@ -119,11 +119,7 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
 
     @Override
     public void copyInto(AmqpObjectTypeDelegate copy) throws Exception {
-        if (!(copy instanceof AmqpTypedObjectDelegate)) {
-            copy.setObject(getObject());
-        } else {
-            AmqpTypedObjectDelegate target = (AmqpTypedObjectDelegate) copy;
-
+        if (copy instanceof AmqpTypedObjectDelegate target) {
             // If there ever was a body then we will have a snapshot of it and we can
             // be sure that our state is correct.
             if (encodedBody != null) {
@@ -136,6 +132,8 @@ public class AmqpTypedObjectDelegate implements AmqpObjectTypeDelegate {
                 // gets as they will use the message bytes (or cached body if set) to return the object.
                 target.parent.setBody(parent.getBody());
             }
+        } else {
+            copy.setObject(getObject());
         }
     }
 

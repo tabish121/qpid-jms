@@ -127,7 +127,7 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
      * @return the appropriate byte value that indicates the type of message this is.
      */
     @Override
-	public byte getJmsMsgType() {
+    public byte getJmsMsgType() {
         return JMS_MESSAGE;
     }
 
@@ -419,8 +419,8 @@ public class AmqpJmsMessageFacade implements JmsMessageFacade {
 
         if (correlationId == null) {
             return null;
-        } else if (correlationId instanceof Binary) {
-            ByteBuffer dup = ((Binary) correlationId).asByteBuffer();
+        } else if (correlationId instanceof Binary binaryCorrelationId) {
+            ByteBuffer dup = binaryCorrelationId.asByteBuffer();
             byte[] bytes = new byte[dup.remaining()];
             dup.get(bytes);
             return bytes;

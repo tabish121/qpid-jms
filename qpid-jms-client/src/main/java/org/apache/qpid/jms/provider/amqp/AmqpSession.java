@@ -23,8 +23,6 @@ import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import jakarta.jms.IllegalStateException;
-
 import org.apache.qpid.jms.meta.JmsConsumerId;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
 import org.apache.qpid.jms.meta.JmsProducerId;
@@ -41,6 +39,8 @@ import org.apache.qpid.jms.provider.amqp.builders.AmqpProducerBuilder;
 import org.apache.qpid.proton.engine.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.IllegalStateException;
 
 public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> implements AmqpResourceParent {
 
@@ -207,11 +207,9 @@ public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> i
     @Override
     public void addChildResource(AmqpResource resource) {
         // delegate to the connection if the type is not managed here.
-        if (resource instanceof AmqpConsumer) {
-            AmqpConsumer consumer = (AmqpConsumer) resource;
+        if (resource instanceof AmqpConsumer consumer) {
             consumers.put(consumer.getConsumerId(), consumer);
-        } else if (resource instanceof AmqpProducer) {
-            AmqpProducer producer = (AmqpProducer) resource;
+        } else if (resource instanceof AmqpProducer producer) {
             producers.put(producer.getProducerId(), producer);
         } else {
             connection.addChildResource(resource);
@@ -221,11 +219,9 @@ public class AmqpSession extends AmqpAbstractResource<JmsSessionInfo, Session> i
     @Override
     public void removeChildResource(AmqpResource resource) {
         // delegate to the connection if the type is not managed here.
-        if (resource instanceof AmqpConsumer) {
-            AmqpConsumer consumer = (AmqpConsumer) resource;
+        if (resource instanceof AmqpConsumer consumer) {
             consumers.remove(consumer.getConsumerId());
-        } else if (resource instanceof AmqpProducer) {
-            AmqpProducer producer = (AmqpProducer) resource;
+        } else if (resource instanceof AmqpProducer producer) {
             producers.remove(producer.getProducerId());
         } else {
             connection.removeChildResource(resource);

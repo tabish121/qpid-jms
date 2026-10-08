@@ -89,8 +89,8 @@ public class AmqpSerializedObjectDelegate implements AmqpObjectTypeDelegate, Tru
 
         if (body == null || body == NULL_OBJECT_BODY) {
             return null;
-        } else if (body instanceof Data) {
-            binary = ((Data) body).getValue();
+        } else if (body instanceof Data data) {
+            binary = data.getValue();
         } else {
             throw new IllegalStateException("Unexpected body type: " + body.getClass().getSimpleName());
         }
@@ -132,16 +132,14 @@ public class AmqpSerializedObjectDelegate implements AmqpObjectTypeDelegate, Tru
 
     @Override
     public void copyInto(AmqpObjectTypeDelegate copy) throws Exception {
-        if (!(copy instanceof AmqpSerializedObjectDelegate)) {
-            copy.setObject(getObject());
-        } else {
-            AmqpSerializedObjectDelegate target = (AmqpSerializedObjectDelegate) copy;
-
+        if (copy instanceof AmqpSerializedObjectDelegate target) {
             target.localContent = localContent;
 
             // Copy the already encoded message body if it exists, subsequent gets
             // will deserialize the data so no mutations can occur.
             target.parent.setBody(parent.getBody());
+        } else {
+            copy.setObject(getObject());
         }
     }
 

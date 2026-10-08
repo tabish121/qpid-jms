@@ -78,14 +78,12 @@ public class AmqpTransactionCoordinator extends AmqpAbstractResource<JmsSessionI
                 AsyncResult pendingRequest = context.getRequest();
                 JmsTransactionId txId = context.getTransactionId();
 
-                if (state instanceof Declared) {
+                if (state instanceof Declared declared) {
                     LOG.debug("New TX started: {}", txId);
-                    Declared declared = (Declared) state;
                     txId.setProviderHint(declared.getTxnId());
                     pendingRequest.onSuccess();
-                } else if (state instanceof Rejected) {
+                } else if (state instanceof Rejected rejected) {
                     LOG.debug("Last TX request failed: {}", txId);
-                    Rejected rejected = (Rejected) state;
                     ProviderException cause = AmqpSupport.convertToNonFatalException(getParent().getProvider(), getEndpoint(), rejected.getError());
                     if (COMMIT_MARKER.equals(txId.getProviderContext()) && !(cause instanceof ProviderTransactionRolledBackException)){
                         cause = new ProviderTransactionRolledBackException(cause.getMessage(), cause);

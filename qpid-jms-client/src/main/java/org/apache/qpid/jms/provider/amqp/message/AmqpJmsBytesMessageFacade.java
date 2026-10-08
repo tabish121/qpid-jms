@@ -162,19 +162,18 @@ public class AmqpJmsBytesMessageFacade extends AmqpJmsMessageFacade implements J
 
         if (body == null) {
             return result;
-        } else if (body instanceof Data) {
-            Binary payload = ((Data) body).getValue();
+        } else if (body instanceof Data data) {
+            Binary payload = data.getValue();
             if (payload != null && payload.getLength() != 0) {
                 result = payload;
             }
-        } else if(body instanceof AmqpValue) {
-            Object value = ((AmqpValue) body).getValue();
+        } else if(body instanceof AmqpValue amqpValue) {
+            Object value = amqpValue.getValue();
             if (value == null) {
                 return result;
             }
 
-            if (value instanceof Binary) {
-                Binary payload = (Binary)value;
+            if (value instanceof Binary payload) {
                 if (payload.getLength() != 0) {
                     result = payload;
                 }

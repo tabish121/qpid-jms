@@ -67,10 +67,8 @@ public class AmqpJmsStreamMessageFacade extends AmqpJmsMessageFacade implements 
         }
 
         Object object = list.get(position);
-        if (object instanceof Binary) {
-            // Copy to a byte[], ensure we copy only the required portion.
-            Binary bin = ((Binary) object);
-            object = Arrays.copyOfRange(bin.getArray(), bin.getArrayOffset(), bin.getLength());
+        if (object instanceof Binary binary) {
+            object = Arrays.copyOfRange(binary.getArray(), binary.getArrayOffset(), binary.getLength());
         }
 
         return object;
@@ -88,8 +86,8 @@ public class AmqpJmsStreamMessageFacade extends AmqpJmsMessageFacade implements 
     @Override
     public void put(Object value) {
         Object entry = value;
-        if (entry instanceof byte[]) {
-            entry = new Binary((byte[]) value);
+        if (entry instanceof byte[] bytes) {
+            entry = new Binary(bytes);
         }
 
         list.add(entry);
@@ -126,8 +124,8 @@ public class AmqpJmsStreamMessageFacade extends AmqpJmsMessageFacade implements 
     void setBody(Section body) {
         if (body == null) {
             list = initializeEmptyBodyList(true);
-        } else if (body instanceof AmqpValue) {
-            Object value = ((AmqpValue) body).getValue();
+        } else if (body instanceof AmqpValue amqpValue) {
+            Object value = amqpValue.getValue();
 
             if (value == null) {
                 list = initializeEmptyBodyList(false);
@@ -137,8 +135,8 @@ public class AmqpJmsStreamMessageFacade extends AmqpJmsMessageFacade implements 
             } else {
                 throw new IllegalStateException("Unexpected amqp-value body content type: " + value.getClass().getSimpleName());
             }
-        } else if (body instanceof AmqpSequence) {
-            List<?> value = ((AmqpSequence) body).getValue();
+        } else if (body instanceof AmqpSequence amqpSequence) {
+            List<?> value = amqpSequence.getValue();
 
             if (value == null) {
                 list = initializeEmptyBodyList(true);

@@ -66,10 +66,9 @@ public class AmqpJmsMapMessageFacade extends AmqpJmsMessageFacade implements Jms
     @Override
     public Object get(String key) {
         Object value = messageBodyMap.get(key);
-        if (value instanceof Binary) {
+        if (value instanceof Binary binary) {
             // Copy to a byte[], ensure we copy only the required portion.
-            Binary bin = ((Binary) value);
-            value = Arrays.copyOfRange(bin.getArray(), bin.getArrayOffset(), bin.getLength());
+            value = Arrays.copyOfRange(binary.getArray(), binary.getArrayOffset(), binary.getLength());
         }
 
         return value;
@@ -78,8 +77,8 @@ public class AmqpJmsMapMessageFacade extends AmqpJmsMessageFacade implements Jms
     @Override
     public void put(String key, Object value) {
         Object entry = value;
-        if (value instanceof byte[]) {
-            entry = new Binary((byte[]) value);
+        if (value instanceof byte[] bytes) {
+            entry = new Binary(bytes);
         }
 
         messageBodyMap.put(key, entry);
@@ -110,12 +109,13 @@ public class AmqpJmsMapMessageFacade extends AmqpJmsMessageFacade implements Jms
     void setBody(Section body) {
         if (body == null) {
             initializeEmptyBody();
-        } else if (body instanceof AmqpValue) {
-            Object o = ((AmqpValue) body).getValue();
-            if (o == null) {
+        } else if (body instanceof AmqpValue amqpValue) {
+            final Object value = amqpValue.getValue();
+
+            if (value == null) {
                 initializeEmptyBody();
-            } else if (o instanceof Map) {
-                messageBodyMap = (Map<String, Object>) o;
+            } else if (value instanceof Map map) {
+                messageBodyMap = map;
                 super.setBody(body);
             } else {
                 throw new IllegalStateException("Unexpected message body type: " + body.getClass().getSimpleName());

@@ -24,8 +24,6 @@ import java.util.ArrayList;
 import java.util.ListIterator;
 import java.util.concurrent.ScheduledFuture;
 
-import jakarta.jms.Session;
-
 import org.apache.qpid.jms.JmsDestination;
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.message.JmsMessage;
@@ -47,6 +45,8 @@ import org.apache.qpid.proton.engine.Delivery;
 import org.apache.qpid.proton.engine.Receiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.Session;
 
 /**
  * AMQP Consumer object that is used to manage JMS MessageConsumer semantics.
@@ -99,11 +99,10 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
                 Delivery current = delivery;
                 delivery = delivery.next();
 
-                if (!(current.getContext() instanceof JmsInboundMessageDispatch)) {
+                if (!(current.getContext() instanceof JmsInboundMessageDispatch envelope)) {
                     continue;
                 }
 
-                JmsInboundMessageDispatch envelope = (JmsInboundMessageDispatch) current.getContext();
                 if (envelope.isRecovered() && !envelope.isDelivered()) {
                     handleDisposition(envelope, current, MODIFIED_FAILED);
                 }
@@ -251,12 +250,11 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
             Delivery current = delivery;
             delivery = delivery.next();
 
-            if (!(current.getContext() instanceof JmsInboundMessageDispatch)) {
+            if (!(current.getContext() instanceof JmsInboundMessageDispatch envelope)) {
                 LOG.debug("{} Found incomplete delivery with no context during session acknowledge processing", AmqpConsumer.this);
                 continue;
             }
 
-            JmsInboundMessageDispatch envelope = (JmsInboundMessageDispatch) current.getContext();
             if (ackType == ACK_TYPE.SESSION_SHUTDOWN && (envelope.isDelivered() || envelope.isRecovered())) {
                 handleDisposition(envelope, current, MODIFIED_FAILED);
             } else if (envelope.isDelivered()) {
@@ -298,11 +296,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
      *        the type of acknowledgement to perform.
      */
     public void acknowledge(JmsInboundMessageDispatch envelope, ACK_TYPE ackType) {
-        Delivery delivery = null;
-
-        if (envelope.getProviderHint() instanceof Delivery) {
-            delivery = (Delivery) envelope.getProviderHint();
-        } else {
+        if (!(envelope.getProviderHint() instanceof Delivery delivery)) {
             LOG.warn("Received Ack for unknown message: {}", envelope);
             return;
         }
@@ -433,12 +427,11 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
             Delivery current = delivery;
             delivery = delivery.next();
 
-            if (!(current.getContext() instanceof JmsInboundMessageDispatch)) {
+            if (!(current.getContext() instanceof JmsInboundMessageDispatch envelope)) {
                 LOG.debug("{} Found incomplete delivery with no context during recover processing", AmqpConsumer.this);
                 continue;
             }
 
-            JmsInboundMessageDispatch envelope = (JmsInboundMessageDispatch) current.getContext();
             if (envelope.isDelivered()) {
                 envelope.getMessage().getFacade().setRedeliveryCount(
                     envelope.getMessage().getFacade().getRedeliveryCount() + 1);
@@ -732,8 +725,7 @@ public class AmqpConsumer extends AmqpAbstractResource<JmsConsumerInfo, Receiver
             Delivery current = delivery;
             delivery = delivery.next();
 
-            if (current.getContext() instanceof JmsInboundMessageDispatch) {
-                JmsInboundMessageDispatch envelope = (JmsInboundMessageDispatch) current.getContext();
+            if (current.getContext() instanceof JmsInboundMessageDispatch envelope) {
                 if (!envelope.isDelivered()) {
                     handleDisposition(envelope, current, Released.getInstance());
                 }

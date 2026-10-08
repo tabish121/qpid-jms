@@ -30,13 +30,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 
-import jakarta.jms.ConnectionConsumer;
-import jakarta.jms.IllegalStateException;
-import jakarta.jms.JMSException;
-import jakarta.jms.ServerSession;
-import jakarta.jms.ServerSessionPool;
-import jakarta.jms.Session;
-
 import org.apache.qpid.jms.message.JmsInboundMessageDispatch;
 import org.apache.qpid.jms.message.JmsMessage;
 import org.apache.qpid.jms.meta.JmsConsumerInfo;
@@ -48,6 +41,13 @@ import org.apache.qpid.jms.provider.ProviderSynchronization;
 import org.apache.qpid.jms.util.MessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.ConnectionConsumer;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
+import jakarta.jms.ServerSession;
+import jakarta.jms.ServerSessionPool;
+import jakarta.jms.Session;
 
 /**
  * JMS Connection Consumer implementation.
@@ -269,8 +269,8 @@ public class JmsConnectionConsumer implements ConnectionConsumer, JmsMessageDisp
 
                 JmsInboundMessageDispatch envelope = messageQueue.dequeueNoWait();
 
-                if (session instanceof JmsSession) {
-                    ((JmsSession) session).enqueueInSession(new DeliveryTask(envelope));
+                if (session instanceof JmsSession jmsSession) {
+                    jmsSession.enqueueInSession(new DeliveryTask(envelope));
                 } else {
                     LOG.warn("ServerSession provided an unknown JMS Session type to this ConnectionConsumer: {}", session);
                 }

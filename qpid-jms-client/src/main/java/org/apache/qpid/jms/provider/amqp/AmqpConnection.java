@@ -98,24 +98,20 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
 
     @Override
     public void addChildResource(AmqpResource resource) {
-        if (resource instanceof AmqpConnectionSession) {
-            connectionSession = (AmqpConnectionSession) resource;
-        } else if (resource instanceof AmqpSession) {
-            AmqpSession session = (AmqpSession) resource;
-            sessions.put(session.getSessionId(), session);
-        } else if (resource instanceof AmqpTemporaryDestination) {
-            AmqpTemporaryDestination tempDest = (AmqpTemporaryDestination) resource;
-            tempDests.put(tempDest.getResourceInfo(), tempDest);
+        if (resource instanceof AmqpConnectionSession amqpConnectionSession) {
+            connectionSession = amqpConnectionSession;
+        } else if (resource instanceof AmqpSession amqpSession) {
+            sessions.put(amqpSession.getSessionId(), amqpSession);
+        } else if (resource instanceof AmqpTemporaryDestination amqpTempDestination) {
+            tempDests.put(amqpTempDestination.getResourceInfo(), amqpTempDestination);
         }
     }
 
     @Override
     public void removeChildResource(AmqpResource resource) {
-        if (resource instanceof AmqpSession) {
-            AmqpSession session = (AmqpSession) resource;
+        if (resource instanceof AmqpSession session) {
             sessions.remove(session.getSessionId());
-        } else if (resource instanceof AmqpTemporaryDestination) {
-            AmqpTemporaryDestination tempDest = (AmqpTemporaryDestination) resource;
+        } else if (resource instanceof AmqpTemporaryDestination tempDest) {
             tempDests.remove(tempDest.getResourceInfo());
         }
     }
@@ -186,8 +182,8 @@ public class AmqpConnection extends AmqpAbstractResource<JmsConnectionInfo, Conn
      * @return the AmqpSession associated with the given id.
      */
     public AmqpSession getSession(JmsSessionId sessionId) {
-        if (sessionId.getProviderHint() instanceof AmqpSession) {
-            return (AmqpSession) sessionId.getProviderHint();
+        if (sessionId.getProviderHint() instanceof AmqpSession amqpSession) {
+            return amqpSession;
         }
         return sessions.get(sessionId);
     }

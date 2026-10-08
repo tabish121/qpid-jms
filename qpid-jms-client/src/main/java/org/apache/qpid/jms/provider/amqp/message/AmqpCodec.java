@@ -413,8 +413,8 @@ public final class AmqpCodec {
                     return new AmqpJmsBytesMessageFacade();
                 }
             }
-        } else if (body instanceof AmqpValue) {
-            Object value = ((AmqpValue) body).getValue();
+        } else if (body instanceof AmqpValue amqpValue) {
+            Object value = amqpValue.getValue();
 
             if (value == null || value instanceof String) {
                 return new AmqpJmsTextMessageFacade(StandardCharsets.UTF_8);

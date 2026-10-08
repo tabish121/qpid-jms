@@ -81,9 +81,7 @@ public class AmqpMessageIdHelper {
     }
 
     public static String toMessageIdString(Object idObject) {
-        if (idObject instanceof String) {
-            final String stringId = (String) idObject;
-
+        if (idObject instanceof String stringId) {
             boolean hasMessageIdPrefix = hasMessageIdPrefix(stringId);
             if (!hasMessageIdPrefix) {
                 // For JMSMessageID, has no "ID:" prefix, we need to record
@@ -105,10 +103,7 @@ public class AmqpMessageIdHelper {
     }
 
     public static String toCorrelationIdString(Object idObject) {
-
-        if (idObject instanceof String) {
-            final String stringId = (String) idObject;
-
+        if (idObject instanceof String stringId) {
             boolean hasMessageIdPrefix = hasMessageIdPrefix(stringId);
             if (!hasMessageIdPrefix) {
                 // For JMSCorrelationID, has no "ID:" prefix, use it as-is.
@@ -146,8 +141,8 @@ public class AmqpMessageIdHelper {
             return JMS_ID_PREFIX + AMQP_UUID_PREFIX + idObject.toString();
         } else if (idObject instanceof UnsignedLong) {
             return JMS_ID_PREFIX + AMQP_ULONG_PREFIX + idObject.toString();
-        } else if (idObject instanceof Binary) {
-            ByteBuffer dup = ((Binary) idObject).asByteBuffer();
+        } else if (idObject instanceof Binary binary) {
+            ByteBuffer dup = binary.asByteBuffer();
 
             byte[] bytes = new byte[dup.remaining()];
             dup.get(bytes);
